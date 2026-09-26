@@ -151,14 +151,16 @@ export default function TechnicianHome() {
   const getStatusInfo = (statusNum: number | string) => {
     const s = Number(statusNum);
     switch (s) {
+      case 0: return { bg: '#f3f4f6', text: '#6b7280', label: 'Pending' };
       case 1: return { bg: '#fef3c7', text: '#D97706', label: 'Pending Acceptance' };
       case 2: return { bg: '#d1fae5', text: '#059669', label: 'Client Confirmed' };
-      case 3: return { bg: '#1A6B6B', text: '#ffffff', label: 'In Progress' };
-      case 4: return { bg: '#10b981', text: '#ffffff', label: 'Completed' };
       case 5: return { bg: '#e0e7ff', text: '#4338ca', label: 'On My Way' };
       case 6: return { bg: '#dcfce7', text: '#15803d', label: 'Arrived' };
-      case 7: return { bg: '#fef3c7', text: '#D97706', label: 'Quote Review' };
-      case 8: return { bg: '#fef3c7', text: '#D97706', label: 'Finished (Pending Review)' };
+      case 7: return { bg: '#fef3c7', text: '#D97706', label: 'Price Review' };
+      case 3: return { bg: '#1A6B6B', text: '#ffffff', label: 'Work In Progress' };
+      case 8: return { bg: '#fef3c7', text: '#D97706', label: 'Awaiting Sign-Off' };
+      case 4: return { bg: '#10b981', text: '#ffffff', label: 'Completed' };
+      case -1: return { bg: '#fee2e2', text: '#DC2626', label: 'Cancelled' };
       default: return { bg: '#1A6B6B', text: '#ffffff', label: 'Active' };
     }
   };

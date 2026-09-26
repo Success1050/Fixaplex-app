@@ -1,9 +1,9 @@
+import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { BASE_URL } from "../config/api";
 import { useAuthStore } from "../store/useAuthStore";
 
@@ -21,11 +21,6 @@ export default function Login() {
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert("Error", "Please enter your email and password.");
-      return;
-    }
-
-    if (password.length < 8) {
-      Alert.alert("Error", "Password must be at least 8 characters.");
       return;
     }
 
@@ -87,25 +82,25 @@ export default function Login() {
             return;
           }
 
-          const isPending = 
-            uData?.status === 0 || 
-            uData?.status === '0' || 
-            uData?.is_verified === 0 || 
-            uData?.is_verified === '0' || 
-            uData?.status === 'pending' || 
+          const isPending =
+            uData?.status === 0 ||
+            uData?.status === '0' ||
+            uData?.is_verified === 0 ||
+            uData?.is_verified === '0' ||
+            uData?.status === 'pending' ||
             String(uData?.type) === '3';
 
           if (isPending) {
             Alert.alert(
-              "Waiting for Verification", 
+              "Waiting for Verification",
               response.data.msg || "Your technician application is awaiting verification. You will have full access once approved.",
               [
-                { 
-                  text: "View Status", 
+                {
+                  text: "View Status",
                   onPress: () => {
                     if (router.canDismiss()) router.dismissAll();
                     router.replace("/awaiting-approval" as any);
-                  } 
+                  }
                 }
               ]
             );
@@ -130,7 +125,7 @@ export default function Login() {
         const msg = response.data?.msg || "Invalid credentials.";
         if (role === 'technician' && (msg.toLowerCase().includes("verif") || msg.toLowerCase().includes("pending") || msg.toLowerCase().includes("approv"))) {
           Alert.alert(
-            "Waiting for Verification", 
+            "Waiting for Verification",
             msg || "Your account is awaiting approval. Please wait for an administrator to verify your credentials.",
             [
               { text: "View Status", onPress: () => router.push("/awaiting-approval" as any) },
@@ -167,10 +162,13 @@ export default function Login() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={styles.header}>
-        <Text style={styles.title}>Home Services, Made Easy</Text>
+        <Text style={styles.title}>
+          <Text style={styles.titleTeal}>Home Services,{"\n"}</Text>
+          <Text style={styles.titleBlue}>Made Easy</Text>
+        </Text>
         <Text style={styles.subtitle}>
-          {role === 'client' 
-            ? "Login to Connect with a Verified Local Technician" 
+          {role === 'client'
+            ? "Login to Connect with a Verified Local Technician"
             : "Login to Earn on Fixaplex"}
         </Text>
       </View>
@@ -216,21 +214,21 @@ export default function Login() {
               value={password}
               onChangeText={setPassword}
             />
-            <TouchableOpacity 
-              style={styles.eyeButton} 
+            <TouchableOpacity
+              style={styles.eyeButton}
               onPress={() => setShowPassword(!showPassword)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons 
-                name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                size={22} 
-                color="#6b7280" 
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={22}
+                color="#6b7280"
               />
             </TouchableOpacity>
           </View>
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.forgotPasswordContainer}
           onPress={() => router.push("/forgot-password" as any)}
         >
@@ -269,17 +267,28 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 24,
+    alignItems: "center",
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontFamily: "DemoOsbert-Bold",
-    color: "#1f2937",
     marginBottom: 8,
+    textAlign: "center",
+    lineHeight: 36,
+  },
+  titleTeal: {
+    color: "#1A6B6B",
+  },
+  titleBlue: {
+    color: "#0284C7",
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: "Lato",
     color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 22,
+    paddingHorizontal: 16,
   },
   tabContainer: {
     flexDirection: 'row',

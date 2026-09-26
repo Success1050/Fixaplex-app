@@ -62,12 +62,15 @@ export default function Index() {
   return (
     <View style={styles.container}>
       <Image
-        source={require("../../assets/images/2.png")}
+        source={require("../../assets/images/logo.png")}
         style={styles.logo}
         resizeMode="contain"
       />
-      <Text style={styles.brandTitle}>Fixaplex</Text>
-      <Text style={styles.brandSubtitle}>Home Services, Made Easy</Text>
+      <Image
+        source={require("../../assets/images/fixaplex-text.png")}
+        style={styles.brandWordmark}
+        resizeMode="contain"
+      />
     </View>
   );
 }
@@ -80,22 +83,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
   logo: {
-    width: 120,
-    height: 120,
-    marginBottom: 12,
+    width: 105,
+    height: 105,
   },
-  brandTitle: {
-    fontSize: 28,
-    fontFamily: "DemoOsbert-Bold",
-    fontWeight: "bold",
-    color: "#1A6B6B",
-    letterSpacing: 0.5,
-  },
-  brandSubtitle: {
-    fontSize: 14,
-    fontFamily: "Lato",
-    color: "#6b7280",
-    marginTop: 4,
+  brandWordmark: {
+    width: 125,
+    height: 39,
+    marginTop: 8,
   },
 });
 

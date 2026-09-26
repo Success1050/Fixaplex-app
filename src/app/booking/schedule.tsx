@@ -255,28 +255,6 @@ export default function Schedule() {
             }
           />
 
-          <Text style={styles.labelForm}>Second Address Line</Text>
-          <TextInput
-            style={styles.inputForm}
-            value={addressLine2}
-            placeholder="Apartment, suite, etc."
-            placeholderTextColor="#9ca3af"
-            onChangeText={(text) =>
-              setFullAddress(addressLine1, text, addressLine3, town, county, postcode)
-            }
-          />
-
-          <Text style={styles.labelForm}>Third Address Line</Text>
-          <TextInput
-            style={styles.inputForm}
-            value={addressLine3}
-            placeholder="Optional additional address details"
-            placeholderTextColor="#9ca3af"
-            onChangeText={(text) =>
-              setFullAddress(addressLine1, addressLine2, text, town, county, postcode)
-            }
-          />
-
           <Text style={styles.labelForm}>
             Town <Text style={styles.requiredAsterisk}>*</Text>
           </Text>
@@ -314,22 +292,11 @@ export default function Schedule() {
               setFullAddress(addressLine1, addressLine2, addressLine3, town, county, text)
             }
           />
-
-          <Text style={styles.labelForm}>
-            Country <Text style={styles.requiredAsterisk}>*</Text>
-          </Text>
-          <TextInput
-            style={[styles.inputForm, styles.inputDisabled]}
-            value={country}
-            editable={false}
-            placeholder="Ireland"
-            placeholderTextColor="#6b7280"
-          />
         </View>
 
         <View style={styles.sectionContainer}>
           <Text style={styles.labelSchedule}>
-            When do you need this service <Text style={styles.requiredAsterisk}>*</Text>
+            When do you need this service? <Text style={styles.requiredAsterisk}>*</Text>
           </Text>
           <TouchableOpacity
             style={styles.dropdownHeader}
@@ -349,10 +316,10 @@ export default function Schedule() {
                 style={styles.dropdownItem}
                 onPress={() => handleTimingSelect("ASAP")}
               >
-                <Ionicons name="car-outline" size={24} color="#1A6B6B" style={styles.itemIcon} />
+                <Ionicons name="car-outline" size={24} color="#1A56DB" style={styles.itemIcon} />
                 <View>
                   <Text style={styles.itemTitle}>ASAP</Text>
-                  <Text style={styles.itemSubtitle}>I need this service right now</Text>
+                  <Text style={styles.itemSubtitle}>I need the technician right now</Text>
                 </View>
               </TouchableOpacity>
 
@@ -360,10 +327,10 @@ export default function Schedule() {
                 style={styles.dropdownItem}
                 onPress={() => handleTimingSelect("Tomorrow")}
               >
-                <Ionicons name="time-outline" size={24} color="#1A6B6B" style={styles.itemIcon} />
+                <Ionicons name="time-outline" size={24} color="#1A56DB" style={styles.itemIcon} />
                 <View>
                   <Text style={styles.itemTitle}>Tomorrow</Text>
-                  <Text style={styles.itemSubtitle}>I need this service tomorrow</Text>
+                  <Text style={styles.itemSubtitle}>I need the technician tomorrow</Text>
                 </View>
               </TouchableOpacity>
 
@@ -374,7 +341,7 @@ export default function Schedule() {
                 <Ionicons
                   name="calendar-outline"
                   size={24}
-                  color="#1A6B6B"
+                  color="#1A56DB"
                   style={styles.itemIcon}
                 />
                 <View>
@@ -392,7 +359,7 @@ export default function Schedule() {
       <View
         style={[
           styles.footer,
-          { paddingBottom: Math.max(insets.bottom + 12, Platform.OS === "android" ? 28 : 16) },
+          { paddingBottom: Math.max(insets.bottom + 16, Platform.OS === "android" ? 36 : 24) },
         ]}
       >
         <TouchableOpacity
@@ -671,7 +638,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
   nextButton: {
-    backgroundColor: "#1A6B6B",
+    backgroundColor: "#1A56DB",
     paddingVertical: 16,
     borderRadius: 30,
     alignItems: "center",

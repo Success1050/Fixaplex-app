@@ -48,7 +48,7 @@ export default function TechnicianJobs() {
   const activeJobs = bookings
     .filter(b => ![4, -1, 0].includes(Number(b.booking_status || b.status)))
     .sort((a, b) => {
-      const priorityOrder: Record<number, number> = { 3: 1, 6: 2, 5: 3, 2: 4, 7: 5, 1: 6 };
+      const priorityOrder: Record<number, number> = { 3: 1, 6: 2, 5: 3, 2: 4, 7: 5, 8: 6, 1: 7 };
       const pA = priorityOrder[Number(a.booking_status || a.status)] || 99;
       const pB = priorityOrder[Number(b.booking_status || b.status)] || 99;
       return pA - pB;
@@ -59,18 +59,20 @@ export default function TechnicianJobs() {
   const getStatusInfo = (statusNum: number | string, techStatus?: string | number) => {
     const s = Number(statusNum);
     switch (s) {
+      case 0: return { bg: '#f3f4f6', text: '#6b7280', label: 'Pending' };
       case 1: 
         if (String(techStatus) === "1" || String(techStatus) === "2") {
           return { bg: '#dbeafe', text: '#3B82F6', label: 'Waiting for Client' };
         }
         return { bg: '#fef3c7', text: '#D97706', label: 'Pending Acceptance' };
       case 2: return { bg: '#d1fae5', text: '#059669', label: 'Client Confirmed' };
-      case 3: return { bg: '#1A6B6B', text: '#ffffff', label: 'In Progress' };
+      case 3: return { bg: '#1A6B6B', text: '#ffffff', label: 'Work In Progress' };
       case 4: return { bg: '#10b981', text: '#ffffff', label: 'Completed' };
       case 5: return { bg: '#e0e7ff', text: '#4338ca', label: 'On My Way' };
       case 6: return { bg: '#dcfce7', text: '#15803d', label: 'Arrived' };
-      case 7: return { bg: '#fef3c7', text: '#D97706', label: 'Quote Review' };
-      case 8: return { bg: '#fef3c7', text: '#D97706', label: 'Finished (Pending Review)' };
+      case 7: return { bg: '#fef3c7', text: '#D97706', label: 'Price Review' };
+      case 8: return { bg: '#fef3c7', text: '#D97706', label: 'Awaiting Sign-Off' };
+      case -1: return { bg: '#fee2e2', text: '#DC2626', label: 'Cancelled' };
       default: return { bg: '#1A6B6B', text: '#ffffff', label: 'Active' };
     }
   };

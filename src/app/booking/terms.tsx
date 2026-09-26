@@ -432,7 +432,7 @@ export default function BookingTerms() {
       <View
         style={[
           styles.footer,
-          { paddingBottom: Math.max(insets.bottom + 12, Platform.OS === "android" ? 28 : 16) },
+          { paddingBottom: Math.max(insets.bottom + 16, Platform.OS === "android" ? 36 : 24) },
         ]}
       >
         <TouchableOpacity

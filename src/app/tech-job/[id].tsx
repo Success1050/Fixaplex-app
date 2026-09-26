@@ -32,6 +32,16 @@ export default function TechJobDetails() {
   const [zoomModalVisible, setZoomModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
+  // Additional quote modal states (POST /technicians/jobs/submit_additional_quote.php)
+  const [addQuoteModalVisible, setAddQuoteModalVisible] = useState(false);
+  const [additionalAmount, setAdditionalAmount] = useState("");
+  const [additionalDescription, setAdditionalDescription] = useState("");
+
+  // Withdraw quote modal states (POST /technicians/jobs/withdraw_additional_quote.php)
+  const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
+  const [withdrawReason, setWithdrawReason] = useState("");
+  const [selectedQuoteIdForWithdraw, setSelectedQuoteIdForWithdraw] = useState<number | string | null>(null);
+
   const fetchJobDetails = async () => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
@@ -66,8 +76,6 @@ export default function TechJobDetails() {
       });
 
       if (res.data && res.data.success) {
-        console.log(res.data);
-
         setDetails(res.data);
       } else {
         Alert.alert("Error", res.data?.msg || "Could not fetch job details");
@@ -86,13 +94,18 @@ export default function TechJobDetails() {
     }
   }, [id]);
 
+  const getAssignmentId = () => {
+    const tech = details?.assignedTechs?.find((t: any) => t.user_status == 1 || t.client_confirmed == 1 || t.client_confirmed === true) || details?.assignedTechs?.[0];
+    return tech?.id || tech?.assignment_id || details?.booking?.assignment_id || details?.booking?.id || id;
+  };
+
   const handleAcceptJob = async () => {
-    const assignmentId = details?.booking?.assignment_id || details?.booking?.id || id;
+    const assignmentId = getAssignmentId();
     try {
       setActionLoading(true);
       const token = await SecureStore.getItemAsync('userToken');
       const formData = new FormData();
-      formData.append('assignment_id', assignmentId);
+      formData.append('assignment_id', String(assignmentId));
 
       const res = await axios.post(`${BASE_URL}/technicians/jobs/accept_job.php`, formData, {
         headers: {
@@ -102,8 +115,8 @@ export default function TechJobDetails() {
       });
 
       if (res.data?.success) {
-        Alert.alert("Success", "Job accepted!");
-        fetchJobDetails(); // Refresh to see updated status
+        Alert.alert("Success", res.data?.msg || "Job accepted!");
+        fetchJobDetails();
       } else {
         Alert.alert("Error", res.data?.msg || "Failed to accept job.");
       }
@@ -121,13 +134,13 @@ export default function TechJobDetails() {
       return;
     }
 
-    const assignmentId = details?.booking?.assignment_id || details?.booking?.id || id;
+    const assignmentId = getAssignmentId();
     try {
       setActionLoading(true);
       const token = await SecureStore.getItemAsync('userToken');
       const formData = new FormData();
-      formData.append('assignment_id', assignmentId);
-      formData.append('reason', rejectReason);
+      formData.append('assignment_id', String(assignmentId));
+      formData.append('reason', rejectReason.trim());
 
       const res = await axios.post(`${BASE_URL}/technicians/jobs/reject_job.php`, formData, {
         headers: {
@@ -137,9 +150,9 @@ export default function TechJobDetails() {
       });
 
       if (res.data?.success) {
-        Alert.alert("Success", "Job rejected.");
+        Alert.alert("Success", res.data?.msg || "Job rejected.");
         setRejectModalVisible(false);
-        router.back(); // Go back after rejecting
+        router.back();
       } else {
         Alert.alert("Error", res.data?.msg || "Failed to reject job.");
       }
@@ -151,13 +164,15 @@ export default function TechJobDetails() {
     }
   };
 
+  // POST /technicians/jobs/change_job_status.php
+  // Allowed transitions: status 5 from 2 (after client confirmation) and status 6 from 5
   const handleChangeStatus = async (newStatus: number) => {
-    const assignmentId = details?.assignedTechs?.find((t: any) => t.user_status == 1)?.id || details?.assignedTechs?.[0]?.id || details?.booking?.assignment_id || details?.booking?.id || id;
+    const assignmentId = getAssignmentId();
     try {
       setActionLoading(true);
       const token = await SecureStore.getItemAsync('userToken');
       const formData = new FormData();
-      formData.append('assignment_id', assignmentId);
+      formData.append('assignment_id', String(assignmentId));
       formData.append('status', newStatus.toString());
 
       const res = await axios.post(`${BASE_URL}/technicians/jobs/change_job_status.php`, formData, {
@@ -168,38 +183,120 @@ export default function TechJobDetails() {
       });
 
       if (res.data?.success) {
-        Alert.alert("Success", "Status updated!");
+        Alert.alert("Success", res.data?.msg || "Status updated!");
         fetchJobDetails(); 
       } else {
-        Alert.alert("Error", res.data?.msg || "Failed to update status.");
+        Alert.alert("Status Update", res.data?.msg || "Failed to update status.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      Alert.alert("Error", "Network error occurred.");
+      Alert.alert("Error", err.response?.data?.msg || "Network error occurred.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // POST /technicians/jobs/submit_additional_quote.php
+  const handleSubmitAdditionalQuote = async () => {
+    const parsedAmount = parseFloat(additionalAmount.trim());
+    if (isNaN(parsedAmount) || parsedAmount < 0.5) {
+      Alert.alert("Invalid Amount", "Please enter a valid extra amount (minimum €0.50).");
+      return;
+    }
+    if (!additionalDescription.trim()) {
+      Alert.alert("Description Required", "Please provide a description of the additional work required.");
+      return;
+    }
+
+    const assignmentId = getAssignmentId();
+    try {
+      setActionLoading(true);
+      const token = await SecureStore.getItemAsync('userToken');
+      const formData = new FormData();
+      formData.append('assignment_id', String(assignmentId));
+      formData.append('amount', String(parsedAmount));
+      formData.append('description', additionalDescription.trim());
+
+      const res = await axios.post(`${BASE_URL}/technicians/jobs/submit_additional_quote.php`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (res.data?.success) {
+        Alert.alert("Success", res.data?.msg || "Additional quote submitted to client!");
+        setAddQuoteModalVisible(false);
+        setAdditionalAmount("");
+        setAdditionalDescription("");
+        fetchJobDetails();
+      } else {
+        Alert.alert("Error", res.data?.msg || "Failed to submit additional quote.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      Alert.alert("Error", err.response?.data?.msg || "Network error occurred.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // POST /technicians/jobs/withdraw_additional_quote.php
+  const handleWithdrawAdditionalQuote = async () => {
+    if (!selectedQuoteIdForWithdraw) return;
+
+    try {
+      setActionLoading(true);
+      const token = await SecureStore.getItemAsync('userToken');
+      const formData = new FormData();
+      formData.append('quote_id', String(selectedQuoteIdForWithdraw));
+      if (withdrawReason.trim()) {
+        formData.append('reason', withdrawReason.trim());
+      }
+
+      const res = await axios.post(`${BASE_URL}/technicians/jobs/withdraw_additional_quote.php`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      if (res.data?.success) {
+        Alert.alert("Success", res.data?.msg || "Additional quote withdrawn successfully.");
+        setWithdrawModalVisible(false);
+        setWithdrawReason("");
+        setSelectedQuoteIdForWithdraw(null);
+        fetchJobDetails();
+      } else {
+        Alert.alert("Error", res.data?.msg || "Failed to withdraw quote.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      Alert.alert("Error", err.response?.data?.msg || "Network error occurred.");
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleGoToComplete = () => {
-    const assignmentId = myTechRecord?.id || details?.booking?.assignment_id || details?.booking?.id || id;
+    const assignmentId = getAssignmentId();
     router.push({
       pathname: "/tech-job/complete",
       params: { 
         assignment_id: assignmentId, 
-        title: booking?.service_name || booking?.title,
-        price: booking?.booking_charges
+        title: details?.booking?.service_name || details?.booking?.title,
+        price: details?.booking?.booking_charges
       }
     });
   };
 
   const handleGoToAdjustPrice = () => {
-    const assignmentId = myTechRecord?.id || details?.booking?.assignment_id || details?.booking?.id || id;
+    const assignmentId = getAssignmentId();
     router.push({
       pathname: "/tech-job/adjust-price",
       params: { 
         assignment_id: assignmentId, 
-        base_price: booking?.booking_charges
+        base_price: details?.booking?.booking_charges
       }
     });
   };
@@ -225,8 +322,27 @@ export default function TechJobDetails() {
 
   const { booking, images, completion_images, assignedTechs } = details;
   const isPending = Number(booking.status) === 1;
-  const myTechRecord = assignedTechs?.find((t: any) => t.user_status == 1) || assignedTechs?.[0];
-  const isClientConfirmed = String(myTechRecord?.user_status) === "1";
+  const myTechRecord = assignedTechs?.find((t: any) => t.user_status == 1 || t.client_confirmed == 1 || t.client_confirmed === true) || assignedTechs?.[0];
+  const isClientConfirmed = Boolean(
+    booking?.client_confirmed == 1 ||
+    booking?.client_confirmed === true ||
+    myTechRecord?.client_confirmed == 1 ||
+    myTechRecord?.client_confirmed === true ||
+    String(myTechRecord?.user_status) === "1"
+  );
+
+  const activeAddQuote = 
+    details?.additional_quote || 
+    (Array.isArray(details?.additional_quotes) ? details.additional_quotes[0] : null) ||
+    (details?.quote?.type === 'additional' ? details.quote : null);
+
+  const hasPendingAddQuote = Boolean(
+    activeAddQuote && (
+      String(activeAddQuote.status).toLowerCase() === 'pending' || 
+      activeAddQuote.status === 0 || 
+      activeAddQuote.status === '0'
+    )
+  );
 
   const getImageUrl = (url: string) => {
     if (!url) return '';
@@ -235,19 +351,20 @@ export default function TechJobDetails() {
 
   const getStatusStyle = (statusNum: number | string) => {
     const s = Number(statusNum);
-    const techStatus = String(myTechRecord?.technician_status || myTechRecord?.status || "0");
     switch (s) {
-      case 1: 
-        if (techStatus === "1" || techStatus === "2") {
-          return { bg: '#dbeafe', text: '#3B82F6', label: 'Waiting for Client' };
-        }
-        return { bg: '#fef3c7', text: '#D97706', label: 'Pending Acceptance' };
-      case 2: return { bg: '#d1fae5', text: '#059669', label: 'Client Confirmed' };
-      case 3: return { bg: '#dbeafe', text: '#3B82F6', label: 'Work In Progress' };
-      case 4: return { bg: '#d1fae5', text: '#059669', label: 'Completed' };
+      case 0: return { bg: '#f3f4f6', text: '#6b7280', label: 'Pending' };
+      case 1: return { bg: '#fef3c7', text: '#D97706', label: 'Pending Acceptance' };
+      case 2: 
+        return isClientConfirmed
+          ? { bg: '#d1fae5', text: '#059669', label: 'Client Confirmed' }
+          : { bg: '#fef3c7', text: '#D97706', label: 'Waiting for Client' };
       case 5: return { bg: '#e0e7ff', text: '#4338ca', label: 'On My Way' };
       case 6: return { bg: '#dcfce7', text: '#15803d', label: 'Arrived' };
       case 7: return { bg: '#fef3c7', text: '#D97706', label: 'Price Review' };
+      case 3: return { bg: '#1A6B6B', text: '#ffffff', label: 'Work In Progress' };
+      case 8: return { bg: '#fef3c7', text: '#D97706', label: 'Awaiting Sign-Off' };
+      case 4: return { bg: '#10b981', text: '#ffffff', label: 'Completed' };
+      case -1: return { bg: '#fee2e2', text: '#DC2626', label: 'Cancelled' };
       default: return { bg: '#e5e7eb', text: '#4b5563', label: `Status ${s}` };
     }
   };
@@ -261,7 +378,9 @@ export default function TechJobDetails() {
           <Ionicons name="chevron-back" size={24} color="#1f2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Job Details</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity style={styles.backButton} onPress={fetchJobDetails}>
+          <Ionicons name="refresh" size={20} color="#1A6B6B" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -323,15 +442,137 @@ export default function TechJobDetails() {
           ) : null}
         </View>
 
-        {/* Status 7: Quote Review Phase Notice (Image 2) */}
+        {/* Status Notices */}
+        {Number(booking.status) === 2 && !isClientConfirmed && (
+          <View style={styles.noticeBox}>
+            <View style={styles.noticeHeaderRow}>
+              <Ionicons name="time-outline" size={20} color="#b45309" />
+              <Text style={styles.noticeTitle}>Awaiting Client Confirmation</Text>
+            </View>
+            <Text style={styles.noticeText}>
+              The client has not confirmed you yet. Please wait for their confirmation before tapping "On My Way".
+            </Text>
+          </View>
+        )}
+
+        {Number(booking.status) === 5 && (
+          <View style={[styles.noticeBox, { backgroundColor: "#EEF2FF", borderColor: "#C7D2FE" }]}>
+            <View style={styles.noticeHeaderRow}>
+              <Ionicons name="navigate-circle-outline" size={20} color="#4338CA" />
+              <Text style={[styles.noticeTitle, { color: "#3730A3" }]}>Journey In Progress</Text>
+            </View>
+            <Text style={[styles.noticeText, { color: "#312E81" }]}>
+              You are on your way to the client's location. Tap "Tap when Arrived" below once you reach the destination.
+            </Text>
+          </View>
+        )}
+
+        {Number(booking.status) === 6 && (
+          <View style={[styles.noticeBox, { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" }]}>
+            <View style={styles.noticeHeaderRow}>
+              <Ionicons name="checkmark-circle-outline" size={20} color="#15803D" />
+              <Text style={[styles.noticeTitle, { color: "#166534" }]}>Arrived at Location</Text>
+            </View>
+            <Text style={[styles.noticeText, { color: "#14532D" }]}>
+              Please assess the job requirements and submit your final price quote to the client.
+            </Text>
+          </View>
+        )}
+
         {Number(booking.status) === 7 && (
           <View style={styles.quoteStatusBox}>
             <View style={styles.quoteStatusHeaderRow}>
-              <Ionicons name="receipt-outline" size={22} color="#b45309" />
-              <Text style={styles.quoteStatusTitle}>Quote Review Phase</Text>
+              <Ionicons name="time-outline" size={22} color="#b45309" />
+              <Text style={styles.quoteStatusTitle}>Price Review Phase</Text>
             </View>
             <Text style={styles.quoteStatusText}>
-              Once the customer accepts the quote, tap "Start Job (In Progress)" below to begin work. If client requested changes, tap "Revise Quote".
+              Your final quote has been submitted. Waiting for the client to review and authorize the balance hold.
+            </Text>
+            <Text style={[styles.quoteStatusText, { marginTop: 6, fontStyle: 'italic', fontSize: 13 }]}>
+              If the client requests changes or declines, you may tap "Revise Quote" below to adjust the price.
+            </Text>
+          </View>
+        )}
+
+        {Number(booking.status) === 3 && (
+          <View style={[styles.noticeBox, { backgroundColor: "#F0FDFA", borderColor: "#99F6E4" }]}>
+            <View style={styles.noticeHeaderRow}>
+              <Ionicons name="hammer-outline" size={20} color="#1A6B6B" />
+              <Text style={[styles.noticeTitle, { color: "#115E59" }]}>Work In Progress</Text>
+            </View>
+            <Text style={[styles.noticeText, { color: "#134E48" }]}>
+              Work is underway. If additional work is discovered, tap "Quote Extra Work" below. When finished, tap "Mark As Complete".
+            </Text>
+          </View>
+        )}
+
+        {/* Pending Additional Quote Card (while at status 3) */}
+        {activeAddQuote && (
+          <View style={styles.quoteStatusBox}>
+            <View style={styles.quoteStatusHeaderRow}>
+              <Ionicons name="document-attach-outline" size={22} color="#b45309" />
+              <Text style={styles.quoteStatusTitle}>
+                Additional Work Quote ({activeAddQuote.status || "Pending"})
+              </Text>
+            </View>
+            <Text style={styles.quoteDetailText}>
+              Extra Amount: <Text style={{ fontFamily: "Lato-Bold" }}>€{activeAddQuote.amount}</Text>
+            </Text>
+            {activeAddQuote.reason || activeAddQuote.description ? (
+              <Text style={styles.quoteStatusText}>
+                {activeAddQuote.reason || activeAddQuote.description}
+              </Text>
+            ) : null}
+            {hasPendingAddQuote && (
+              <View style={{ marginTop: 12, flexDirection: "row", justifyContent: "flex-end" }}>
+                <TouchableOpacity
+                  style={styles.withdrawBtn}
+                  onPress={() => {
+                    setSelectedQuoteIdForWithdraw(activeAddQuote.quote_id || activeAddQuote.id);
+                    setWithdrawModalVisible(true);
+                  }}
+                  disabled={actionLoading}
+                >
+                  <Ionicons name="close-circle-outline" size={16} color="#DC2626" style={{ marginRight: 4 }} />
+                  <Text style={styles.withdrawBtnText}>Withdraw Quote</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        {Number(booking.status) === 8 && (
+          <View style={styles.quoteStatusBox}>
+            <View style={styles.quoteStatusHeaderRow}>
+              <Ionicons name="shield-checkmark-outline" size={22} color="#b45309" />
+              <Text style={styles.quoteStatusTitle}>Awaiting Client Sign-Off</Text>
+            </View>
+            <Text style={styles.quoteStatusText}>
+              Work completed and completion photos submitted. Waiting for the client or admin to sign off and release payment in full.
+            </Text>
+          </View>
+        )}
+
+        {Number(booking.status) === 4 && (
+          <View style={[styles.noticeBox, { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" }]}>
+            <View style={styles.noticeHeaderRow}>
+              <Ionicons name="checkmark-done-circle" size={22} color="#15803D" />
+              <Text style={[styles.noticeTitle, { color: "#166534" }]}>Job Completed</Text>
+            </View>
+            <Text style={[styles.noticeText, { color: "#14532D" }]}>
+              This job has been signed off and payment has been captured in full.
+            </Text>
+          </View>
+        )}
+
+        {Number(booking.status) === -1 && (
+          <View style={[styles.noticeBox, { backgroundColor: "#FEF2F2", borderColor: "#FECACA" }]}>
+            <View style={styles.noticeHeaderRow}>
+              <Ionicons name="close-circle-outline" size={22} color="#DC2626" />
+              <Text style={[styles.noticeTitle, { color: "#991B1B" }]}>Job Cancelled</Text>
+            </View>
+            <Text style={[styles.noticeText, { color: "#7F1D1D" }]}>
+              This booking has been cancelled or rejected.
             </Text>
           </View>
         )}
@@ -357,9 +598,30 @@ export default function TechJobDetails() {
           </View>
         )}
 
+        {/* Completion Photos */}
+        {completion_images && completion_images.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Completion Photos</Text>
+            <View style={styles.photosGrid}>
+              {completion_images.map((img: any, idx: number) => (
+                <TouchableOpacity 
+                  key={idx} 
+                  style={styles.photoWrapper}
+                  onPress={() => {
+                    setSelectedImage(getImageUrl(typeof img === 'string' ? img : img.url));
+                    setZoomModalVisible(true);
+                  }}
+                >
+                  <Image source={{ uri: getImageUrl(typeof img === 'string' ? img : img.url) }} style={styles.galleryImage} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
       </ScrollView>
 
-      {/* Sticky Bottom Actions if Pending */}
+      {/* Sticky Bottom Actions by Status */}
       {isPending && (
         <View style={styles.bottomActions}>
           <TouchableOpacity
@@ -379,15 +641,21 @@ export default function TechJobDetails() {
         </View>
       )}
 
-      {/* Progress Actions */}
-      {Number(booking.status) === 2 && isClientConfirmed && (
+      {Number(booking.status) === 2 && (
         <View style={styles.bottomActions}>
           <TouchableOpacity
             style={[styles.actionBtn, styles.progressBtn]}
             onPress={() => handleChangeStatus(5)}
             disabled={actionLoading}
           >
-            {actionLoading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.progressBtnText}>Tap when On My Way</Text>}
+            {actionLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Ionicons name="navigate-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.progressBtnText}>Tap when On My Way</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -399,7 +667,14 @@ export default function TechJobDetails() {
             onPress={() => handleChangeStatus(6)}
             disabled={actionLoading}
           >
-            {actionLoading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.progressBtnText}>Tap when Arrived</Text>}
+            {actionLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Ionicons name="location-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.progressBtnText}>Tap when Arrived</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -411,12 +686,12 @@ export default function TechJobDetails() {
             onPress={handleGoToAdjustPrice}
             disabled={actionLoading}
           >
+            <Ionicons name="pricetag-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
             <Text style={styles.progressBtnText}>Submit Final Price</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Status 7: Quote Review - Start Job (In Progress) or Revise Quote */}
       {Number(booking.status) === 7 && (
         <View style={styles.bottomActions}>
           <TouchableOpacity
@@ -424,22 +699,8 @@ export default function TechJobDetails() {
             onPress={handleGoToAdjustPrice}
             disabled={actionLoading}
           >
-            <Ionicons name="pricetag-outline" size={16} color="#1A6B6B" style={{ marginRight: 6 }} />
+            <Ionicons name="pencil-outline" size={16} color="#1A6B6B" style={{ marginRight: 6 }} />
             <Text style={styles.secondaryActionBtnText}>Revise Quote</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.progressBtn, { flex: 2 }]}
-            onPress={() => handleChangeStatus(3)}
-            disabled={actionLoading}
-          >
-            {actionLoading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <Ionicons name="play" size={18} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.progressBtnText}>Start Job (In Progress)</Text>
-              </>
-            )}
           </TouchableOpacity>
         </View>
       )}
@@ -447,11 +708,28 @@ export default function TechJobDetails() {
       {Number(booking.status) === 3 && (
         <View style={styles.bottomActions}>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.progressBtn]}
-            onPress={handleGoToComplete}
+            style={[styles.actionBtn, styles.secondaryActionBtn]}
+            onPress={() => setAddQuoteModalVisible(true)}
+            disabled={actionLoading || hasPendingAddQuote}
+          >
+            <Ionicons name="add-circle-outline" size={18} color="#1A6B6B" style={{ marginRight: 6 }} />
+            <Text style={styles.secondaryActionBtnText}>Quote Extra Work</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.progressBtn, { flex: 1.4 }]}
+            onPress={() => {
+              if (hasPendingAddQuote) {
+                Alert.alert(
+                  "Completion Blocked",
+                  "You have an additional quote awaiting the client's response. Please wait for their approval or withdraw the quote before marking the job as complete."
+                );
+                return;
+              }
+              handleGoToComplete();
+            }}
             disabled={actionLoading}
           >
-            <Text style={styles.progressBtnText}>Mark Job As Complete</Text>
+            <Text style={styles.progressBtnText}>Mark As Complete</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -493,6 +771,117 @@ export default function TechJobDetails() {
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
                   <Text style={styles.modalSubmitText}>Submit</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Submit Additional Quote Modal */}
+      <Modal
+        visible={addQuoteModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddQuoteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Quote Additional Work</Text>
+            <Text style={styles.modalSubtitle}>
+              Quote the extra amount for additional work found during the job. The client will be asked to approve the extra amount.
+            </Text>
+
+            <Text style={styles.inputFieldLabel}>Extra Amount (€, min 0.50)</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 35.00"
+              keyboardType="numeric"
+              value={additionalAmount}
+              onChangeText={setAdditionalAmount}
+            />
+
+            <Text style={styles.inputFieldLabel}>Description of Extra Work</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="What additional work is needed and why..."
+              value={additionalDescription}
+              onChangeText={setAdditionalDescription}
+              multiline
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => {
+                  setAddQuoteModalVisible(false);
+                  setAdditionalAmount("");
+                  setAdditionalDescription("");
+                }}
+                disabled={actionLoading}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSubmitBtn, { backgroundColor: "#1A6B6B" }]}
+                onPress={handleSubmitAdditionalQuote}
+                disabled={actionLoading}
+              >
+                {actionLoading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.modalSubmitText}>Submit Quote</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Withdraw Additional Quote Modal */}
+      <Modal
+        visible={withdrawModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWithdrawModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Withdraw Additional Quote</Text>
+            <Text style={styles.modalSubtitle}>
+              Withdraw this quote if the client has not answered so that you can proceed to complete the job at the agreed price.
+            </Text>
+
+            <Text style={styles.inputFieldLabel}>Reason for Withdrawal (Optional)</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="e.g. Client decided not to proceed with additional work..."
+              value={withdrawReason}
+              onChangeText={setWithdrawReason}
+              multiline
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => {
+                  setWithdrawModalVisible(false);
+                  setWithdrawReason("");
+                  setSelectedQuoteIdForWithdraw(null);
+                }}
+                disabled={actionLoading}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSubmitBtn}
+                onPress={handleWithdrawAdditionalQuote}
+                disabled={actionLoading}
+              >
+                {actionLoading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.modalSubmitText}>Withdraw</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -812,5 +1201,66 @@ const styles = StyleSheet.create({
     fontFamily: 'Lato',
     color: '#78350F',
     lineHeight: 20,
+  },
+  quoteDetailText: {
+    fontSize: 14,
+    fontFamily: 'Lato',
+    color: '#92400E',
+    marginBottom: 4,
+  },
+  withdrawBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+  },
+  withdrawBtnText: {
+    fontSize: 13,
+    fontFamily: 'Lato-Bold',
+    color: '#DC2626',
+  },
+  noticeBox: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+  },
+  noticeHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  noticeTitle: {
+    fontSize: 15,
+    fontFamily: 'Lato-Bold',
+    color: '#92400E',
+  },
+  noticeText: {
+    fontSize: 14,
+    fontFamily: 'Lato',
+    color: '#78350F',
+    lineHeight: 20,
+  },
+  inputFieldLabel: {
+    fontSize: 13,
+    fontFamily: 'Lato-Bold',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    fontFamily: 'Lato',
+    fontSize: 15,
+    backgroundColor: '#f9fafb',
+    color: '#1f2937',
+    marginBottom: 16,
   },
 });

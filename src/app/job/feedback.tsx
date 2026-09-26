@@ -195,26 +195,7 @@ export default function Feedback() {
             </Text>
           </View>
 
-          {/* If booking info is known */}
-          {bookingId && (
-            <View style={styles.selectedJobCard}>
-              <View style={styles.jobBadgeRow}>
-                <View style={styles.completedBadge}>
-                  <Ionicons name="checkmark-circle" size={13} color="#15803D" style={{ marginRight: 4 }} />
-                  <Text style={styles.completedBadgeText}>Completed Job</Text>
-                </View>
-                {bookingCode ? (
-                  <Text style={styles.bookingCodeText}>Ref: #{bookingCode}</Text>
-                ) : null}
-              </View>
-              {serviceName ? <Text style={styles.serviceNameText}>{serviceName}</Text> : null}
-              {techName ? (
-                <Text style={styles.techNameText}>
-                  Technician: <Text style={{ fontFamily: "Lato-Bold" }}>{techName}</Text>
-                </Text>
-              ) : null}
-            </View>
-          )}
+
 
           {/* If booking not provided & fetching */}
           {fetchingJobs && (
@@ -380,49 +361,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     lineHeight: 16,
   },
-  selectedJobCard: {
-    backgroundColor: "#f0fdf4",
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-  },
-  jobBadgeRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  completedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#dcfce7",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  completedBadgeText: {
-    fontSize: 11,
-    fontFamily: "Lato-Bold",
-    color: "#15803D",
-  },
-  bookingCodeText: {
-    fontSize: 12,
-    fontFamily: "Lato-Bold",
-    color: "#4b5563",
-  },
-  serviceNameText: {
-    fontSize: 14,
-    fontFamily: "Lato-Bold",
-    color: "#14532d",
-    marginBottom: 2,
-  },
-  techNameText: {
-    fontSize: 12,
-    fontFamily: "Lato",
-    color: "#166534",
-  },
+
   loadingBox: {
     flexDirection: "row",
     alignItems: "center",

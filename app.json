@@ -29,9 +29,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#1A6B6B",
-          "image": "./assets/images/logo.png",
-          "imageWidth": 120
+          "backgroundColor": "#ffffff",
+          "image": "./assets/images/splash-logo.png",
+          "imageWidth": 130
         }
       ],
       "expo-secure-store",

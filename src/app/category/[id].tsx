@@ -2,12 +2,14 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, ActivityIndicator, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import axios from "axios";
 import { BASE_URL } from "../../config/api";
 import { useBookingStore } from "../../store/useBookingStore";
 
 export default function CategoryServicesScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { id, name } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
@@ -175,7 +177,12 @@ export default function CategoryServicesScreen() {
         )}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View
+        style={[
+          styles.footer,
+          { paddingBottom: Math.max(insets.bottom + 16, Platform.OS === "android" ? 36 : 24) },
+        ]}
+      >
         <TouchableOpacity 
           style={[styles.nextButton, selectedServiceId ? styles.nextButtonActive : styles.nextButtonDisabled]} 
           onPress={handleNext}

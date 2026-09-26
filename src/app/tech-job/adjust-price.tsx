@@ -36,8 +36,12 @@ export default function AdjustPrice() {
       });
 
       if (res.data?.success) {
-        Alert.alert("Success", "Quote submitted successfully!");
-        router.replace("/(technician-tabs)/jobs");
+        Alert.alert("Success", res.data?.msg || "Quote submitted successfully!");
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/(technician-tabs)/jobs");
+        }
       } else {
         Alert.alert("Error", res.data?.msg || "Failed to submit quote.");
       }
