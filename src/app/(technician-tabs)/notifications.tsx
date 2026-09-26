@@ -13,6 +13,23 @@ export default function TechnicianNotifications() {
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const [bookings, setBookings] = useState<any[]>([]);
+
+  const fetchBookings = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      if (!token) return;
+      const res = await axios.post(`${BASE_URL}/technicians/jobs/get_jobs.php`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data && res.data.success && Array.isArray(res.data.bookings)) {
+        setBookings(res.data.bookings);
+      }
+    } catch (e) {
+      console.warn("Could not fetch bookings list for notification resolution:", e);
+    }
+  };
+
   const fetchNotifications = async () => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
@@ -34,11 +51,13 @@ export default function TechnicianNotifications() {
 
   useEffect(() => {
     fetchNotifications();
+    fetchBookings();
   }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchNotifications();
+    fetchBookings();
   };
 
   const markAsRead = async (id: number | 'all') => {
@@ -62,6 +81,40 @@ export default function TechnicianNotifications() {
     } catch (err) {
       console.error("Failed to mark as read:", err);
     }
+  };
+
+  const handleNotificationPress = (notif: any) => {
+    if (notif.is_read === 0 || notif.is_read === "0") {
+      markAsRead(notif.id);
+    }
+
+    // Direct property if available
+    const directId = notif.booking_id || notif.job_id || notif.assignment_id || notif.target_id;
+    if (directId) {
+      router.push(`/tech-job/${directId}` as any);
+      return;
+    }
+
+    // Extract booking code like FP-ELE-110FCF3, FP-PLB-72200B9, UBX-2026-756F5D
+    const combined = `${notif.title || ''} ${notif.message || ''}`;
+    const codeMatch = combined.match(/\b([A-Z0-9]{2,6}-[A-Z0-9]{2,6}-[A-Z0-9]{4,10})\b/i) ||
+                      combined.match(/\b([A-Z]{2,4}-[A-Z0-9]+-[A-Z0-9]+)\b/i) ||
+                      combined.match(/(?:job|booking)\s+#?([A-Z0-9-]+)/i);
+    const code = codeMatch ? codeMatch[1].trim() : null;
+
+    if (code) {
+      // Look up in loaded bookings list to get numeric booking_id if available
+      const found = bookings.find((b: any) =>
+        String(b.booking_code || '').toUpperCase() === code.toUpperCase() ||
+        String(b.booking_id || b.id) === code
+      );
+      const targetId = found ? (found.booking_id || found.id) : code;
+      router.push(`/tech-job/${targetId}` as any);
+      return;
+    }
+
+    // Fallback if no specific job identifier is in the notification
+    Alert.alert(notif.title || "Notification", notif.message || "");
   };
 
   // Helper to format date string
@@ -113,9 +166,7 @@ export default function TechnicianNotifications() {
                   <TouchableOpacity 
                     key={notif.id || index} 
                     style={[styles.notificationItem, isUnread && styles.notificationItemHighlighted]}
-                    onPress={() => {
-                      if (isUnread) markAsRead(notif.id);
-                    }}
+                    onPress={() => handleNotificationPress(notif)}
                     activeOpacity={0.7}
                   >
                     <View style={styles.iconContainer}>
@@ -128,6 +179,7 @@ export default function TechnicianNotifications() {
                       </View>
                       <Text style={styles.notifSubtitle}>{notif.message}</Text>
                     </View>
+                    <Ionicons name="chevron-forward" size={18} color="#9ca3af" style={{ alignSelf: 'center', marginLeft: 8 }} />
                   </TouchableOpacity>
                 );
               })}

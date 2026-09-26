@@ -40,6 +40,9 @@ export default function Register() {
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [profilePic, setProfilePic] = useState<ImagePicker.ImagePickerAsset | null>(null);
 
   // Technician state
@@ -54,12 +57,12 @@ export default function Register() {
     const fetchServices = async () => {
       try {
         setLoadingServices(true);
-        const res = await axios.post(`${BASE_URL}/clients/home/services.php`);
-        if (res.data && res.data.success && Array.isArray(res.data.services)) {
-          setApiServices(res.data.services);
+        const res = await axios.post(`${BASE_URL}/clients/home/categories.php`);
+        if (res.data && res.data.success) {
+          setApiServices(res.data.categories || res.data.services || []);
         }
       } catch (err) {
-        console.error("Failed to fetch services from services.php:", err);
+        console.error("Failed to fetch categories from categories.php:", err);
       } finally {
         setLoadingServices(false);
       }
@@ -138,16 +141,20 @@ export default function Register() {
   };
 
   const handleNextStep1 = () => {
-    if (!name || !email || !phone || !password || !areas) {
-      Alert.alert('Required Fields', 'Please fill in all required fields (Full Name, Email, Phone, Password, Service Areas).');
+    if (!name || !email || !phone || !password || !confirmPassword || !areas) {
+      Alert.alert('Required Fields', 'Please fill in all required fields (Full Name, Email, Phone, Password, Confirm Password, Service Areas).');
       return;
     }
     if (phone.length < 9) {
       Alert.alert('Invalid Phone', 'Phone number must be at least 9 characters.');
       return;
     }
-    if (password.length < 6) {
-      Alert.alert('Invalid Password', 'Password must be at least 6 characters.');
+    if (password.length < 8) {
+      Alert.alert('Invalid Password', 'Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      Alert.alert('Password Mismatch', 'Password and Confirm Password do not match.');
       return;
     }
     setTechStep(2);
@@ -163,8 +170,16 @@ export default function Register() {
 
   const handleRegister = async () => {
     if (role === 'client') {
-      if (!name || !email || !phone || !password || !address) {
-        Alert.alert('Error', 'Please fill in all required fields (Name, Email, Phone, Password, Address).');
+      if (!name || !email || !phone || !password || !confirmPassword) {
+        Alert.alert('Error', 'Please fill in all required fields (Name, Email, Phone, Password, Confirm Password).');
+        return;
+      }
+      if (password.length < 8) {
+        Alert.alert('Invalid Password', 'Password must be at least 8 characters.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        Alert.alert('Password Mismatch', 'Password and Confirm Password do not match.');
         return;
       }
     } else {
@@ -289,13 +304,45 @@ export default function Register() {
       </View>
 
       <View style={styles.inputContainer}>
-        <Text style={styles.label}>Address *</Text>
-        <TextInput style={styles.input} placeholder="Enter your address" placeholderTextColor="#9ca3af" value={address} onChangeText={setAddress} />
+        <Text style={styles.label}>Password * (Min 8 chars)</Text>
+        <View style={styles.passwordWrapper}>
+          <TextInput 
+            style={styles.passwordInput} 
+            placeholder="Create a password" 
+            placeholderTextColor="#9ca3af" 
+            secureTextEntry={!showPassword} 
+            value={password} 
+            onChangeText={setPassword} 
+          />
+          <TouchableOpacity 
+            style={styles.eyeButton} 
+            onPress={() => setShowPassword(!showPassword)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={22} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.inputContainer}>
-        <Text style={styles.label}>Password *</Text>
-        <TextInput style={styles.input} placeholder="Create a password" placeholderTextColor="#9ca3af" secureTextEntry value={password} onChangeText={setPassword} />
+        <Text style={styles.label}>Confirm Password *</Text>
+        <View style={styles.passwordWrapper}>
+          <TextInput 
+            style={styles.passwordInput} 
+            placeholder="Confirm your password" 
+            placeholderTextColor="#9ca3af" 
+            secureTextEntry={!showConfirmPassword} 
+            value={confirmPassword} 
+            onChangeText={setConfirmPassword} 
+          />
+          <TouchableOpacity 
+            style={styles.eyeButton} 
+            onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={22} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <TouchableOpacity 
@@ -345,18 +392,50 @@ export default function Register() {
       </View>
 
       <View style={styles.inputContainer}>
-        <Text style={styles.label}>Address</Text>
-        <TextInput style={styles.input} placeholder="Enter your address" placeholderTextColor="#9ca3af" value={address} onChangeText={setAddress} />
+        <Text style={styles.label}>Password * (Min 8 chars)</Text>
+        <View style={styles.passwordWrapper}>
+          <TextInput 
+            style={styles.passwordInput} 
+            placeholder="Create a password" 
+            placeholderTextColor="#9ca3af" 
+            secureTextEntry={!showPassword} 
+            value={password} 
+            onChangeText={setPassword} 
+          />
+          <TouchableOpacity 
+            style={styles.eyeButton} 
+            onPress={() => setShowPassword(!showPassword)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={22} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.inputContainer}>
-        <Text style={styles.label}>Password * (Min 6 chars)</Text>
-        <TextInput style={styles.input} placeholder="Create a password" placeholderTextColor="#9ca3af" secureTextEntry value={password} onChangeText={setPassword} />
+        <Text style={styles.label}>Confirm Password *</Text>
+        <View style={styles.passwordWrapper}>
+          <TextInput 
+            style={styles.passwordInput} 
+            placeholder="Confirm your password" 
+            placeholderTextColor="#9ca3af" 
+            secureTextEntry={!showConfirmPassword} 
+            value={confirmPassword} 
+            onChangeText={setConfirmPassword} 
+          />
+          <TouchableOpacity 
+            style={styles.eyeButton} 
+            onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={22} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.inputContainer}>
         <Text style={styles.label}>Service Areas *</Text>
-        <TextInput style={styles.input} placeholder="e.g. Dublin 4, City Center" placeholderTextColor="#9ca3af" value={areas} onChangeText={setAreas} />
+        <TextInput style={styles.input} placeholder="Enter service areas (e.g. Dublin 1 - 24, County Dublin)" placeholderTextColor="#9ca3af" value={areas} onChangeText={setAreas} />
       </View>
 
       <TouchableOpacity 
@@ -629,6 +708,28 @@ const styles = StyleSheet.create({
     backgroundColor: "#f9fafb",
     fontFamily: 'Lato',
     color: "#1f2937",
+  },
+  passwordWrapper: {
+    height: 52,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    backgroundColor: "#f9fafb",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+  },
+  passwordInput: {
+    flex: 1,
+    height: "100%",
+    fontSize: 15,
+    fontFamily: 'Lato',
+    color: "#1f2937",
+  },
+  eyeButton: {
+    padding: 6,
+    justifyContent: "center",
+    alignItems: "center",
   },
   stepContainer: {
     flex: 1,

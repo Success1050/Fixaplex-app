@@ -13,6 +13,21 @@ export default function ClientNotifications() {
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const [bookings, setBookings] = useState<any[]>([]);
+
+  const fetchBookings = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      if (!token) return;
+      const res = await axios.post(`${BASE_URL}/clients/jobs/get_bookings.php`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => null);
+      if (res?.data?.success && Array.isArray(res.data.bookings)) {
+        setBookings(res.data.bookings);
+      }
+    } catch (e) {}
+  };
+
   const fetchNotifications = async () => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
@@ -34,11 +49,13 @@ export default function ClientNotifications() {
 
   useEffect(() => {
     fetchNotifications();
+    fetchBookings();
   }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
     fetchNotifications();
+    fetchBookings();
   };
 
   const markAsRead = async (id: number | 'all') => {
@@ -62,6 +79,36 @@ export default function ClientNotifications() {
     } catch (err) {
       console.error("Failed to mark as read:", err);
     }
+  };
+
+  const handleNotificationPress = (notif: any) => {
+    if (notif.is_read === 0 || notif.is_read === "0") {
+      markAsRead(notif.id);
+    }
+
+    const directId = notif.booking_id || notif.job_id || notif.assignment_id || notif.target_id;
+    if (directId) {
+      router.push(`/user-job/${directId}` as any);
+      return;
+    }
+
+    const combined = `${notif.title || ''} ${notif.message || ''}`;
+    const codeMatch = combined.match(/\b([A-Z0-9]{2,6}-[A-Z0-9]{2,6}-[A-Z0-9]{4,10})\b/i) ||
+                      combined.match(/\b([A-Z]{2,4}-[A-Z0-9]+-[A-Z0-9]+)\b/i) ||
+                      combined.match(/(?:job|booking)\s+#?([A-Z0-9-]+)/i);
+    const code = codeMatch ? codeMatch[1].trim() : null;
+
+    if (code) {
+      const found = bookings.find((b: any) =>
+        String(b.booking_code || '').toUpperCase() === code.toUpperCase() ||
+        String(b.booking_id || b.id) === code
+      );
+      const targetId = found ? (found.booking_id || found.id) : code;
+      router.push(`/user-job/${targetId}` as any);
+      return;
+    }
+
+    Alert.alert(notif.title || "Notification", notif.message || "");
   };
 
   // Helper to format date string
@@ -116,10 +163,7 @@ export default function ClientNotifications() {
                   <TouchableOpacity 
                     key={notif.id || index} 
                     style={[styles.notificationItem, isUnread && styles.notificationItemHighlighted]}
-                    onPress={() => {
-                      if (isUnread) markAsRead(notif.id);
-                      // If there is a booking ID, we could route to it here
-                    }}
+                    onPress={() => handleNotificationPress(notif)}
                     activeOpacity={0.7}
                   >
                     <View style={styles.iconContainer}>
@@ -132,6 +176,7 @@ export default function ClientNotifications() {
                       </View>
                       <Text style={styles.notifSubtitle}>{notif.message}</Text>
                     </View>
+                    <Ionicons name="chevron-forward" size={18} color="#9ca3af" style={{ alignSelf: 'center', marginLeft: 8 }} />
                   </TouchableOpacity>
                 );
               })}

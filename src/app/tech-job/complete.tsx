@@ -16,10 +16,12 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BASE_URL } from "../../config/api";
 
 export default function MarkJobComplete() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { assignment_id, title, price } = useLocalSearchParams();
   
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
@@ -47,6 +49,24 @@ export default function MarkJobComplete() {
     if (!result.canceled && result.assets) {
       const uris = result.assets.map(a => a.uri);
       setSelectedImages(prev => [...prev, ...uris].slice(0, 6));
+    }
+  };
+
+  const takePhoto = async () => {
+    if (selectedImages.length >= 6) {
+      Alert.alert("Limit Reached", "You can only upload up to 6 photos.");
+      return;
+    }
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Camera permissions are required to take photos.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets && result.assets[0]) {
+      setSelectedImages(prev => [...prev, result.assets[0].uri].slice(0, 6));
     }
   };
 
@@ -131,12 +151,22 @@ export default function MarkJobComplete() {
           ))}
 
           {selectedImages.length < 6 && (
-            <TouchableOpacity 
-              style={styles.uploadButton}
-              onPress={pickImage}
-            >
-              <Ionicons name="add" size={28} color="#6b7280" />
-            </TouchableOpacity>
+            <View style={styles.uploadButtonGroup}>
+              <TouchableOpacity 
+                style={styles.uploadOptionBtn}
+                onPress={pickImage}
+              >
+                <Ionicons name="images-outline" size={24} color="#1A6B6B" />
+                <Text style={styles.uploadOptionText}>Gallery</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.uploadOptionBtn}
+                onPress={takePhoto}
+              >
+                <Ionicons name="camera-outline" size={24} color="#1A6B6B" />
+                <Text style={styles.uploadOptionText}>Camera</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -154,7 +184,7 @@ export default function MarkJobComplete() {
 
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 12, Platform.OS === 'android' ? 28 : 16) }]}>
         <TouchableOpacity 
           style={[styles.primaryButton, photosUploaded ? styles.primaryButtonActive : {}]}
           disabled={!photosUploaded || loading}
@@ -269,6 +299,26 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
+  },
+  uploadButtonGroup: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  uploadOptionBtn: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    backgroundColor: "#E8F5F5",
+    borderWidth: 1,
+    borderColor: "#99F6E4",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  uploadOptionText: {
+    fontSize: 12,
+    fontFamily: "Lato-Bold",
+    color: "#1A6B6B",
   },
   successBanner: {
     flexDirection: "row",

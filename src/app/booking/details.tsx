@@ -1,20 +1,34 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Platform, TextInput, KeyboardAvoidingView, ScrollView, Image, Alert } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  SafeAreaView,
+  Platform,
+  TextInput,
+  KeyboardAvoidingView,
+  ScrollView,
+  Image,
+  Alert,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBookingStore } from "../../store/useBookingStore";
 
 export default function Details() {
   const router = useRouter();
-  
-  const issueDescription = useBookingStore(state => state.issueDescription);
-  const setIssueDescription = useBookingStore(state => state.setIssueDescription);
-  const images = useBookingStore(state => state.images);
-  const addImage = useBookingStore(state => state.addImage);
-  const removeImage = useBookingStore(state => state.removeImage);
+  const insets = useSafeAreaInsets();
 
-  const isNextEnabled = issueDescription.trim().length > 0;
+  const issueDescription = useBookingStore((state) => state.issueDescription);
+  const setIssueDescription = useBookingStore((state) => state.setIssueDescription);
+  const images = useBookingStore((state) => state.images);
+  const addImage = useBookingStore((state) => state.addImage);
+  const removeImage = useBookingStore((state) => state.removeImage);
+
+  const isFormValid = issueDescription.trim().length > 0 && images.length >= 3;
 
   const pickImageFromLibrary = async () => {
     if (images.length >= 6) {
@@ -52,24 +66,48 @@ export default function Details() {
     }
   };
 
+  const handleNext = () => {
+    if (issueDescription.trim().length === 0) {
+      Alert.alert("Required Field", "Please describe the problem.");
+      return;
+    }
+    if (images.length < 3) {
+      Alert.alert(
+        "Photos Required",
+        "Please add at least 3 photos (min 3, max 6) to help technicians assess the job accurately."
+      );
+      return;
+    }
+    router.push("/booking/schedule");
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color="#1f2937" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Describe the issue</Text>
+        <Text style={styles.headerTitle}>
+          Describe the issue <Text style={styles.requiredAsterisk}>*</Text>
+        </Text>
       </View>
 
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.container}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={styles.explainerText}>
+            Describing the issue helps technicians get more idea about the problem prior to onsite inspection.
+          </Text>
+
           <View style={styles.inputWrapper}>
-            <TextInput 
+            <TextInput
               style={styles.textArea}
-              placeholder='"My boiler is broken"'
+              placeholder="Please provide a little more information about the job."
               placeholderTextColor="#9ca3af"
               multiline
               textAlignVertical="top"
@@ -77,14 +115,28 @@ export default function Details() {
               onChangeText={setIssueDescription}
             />
           </View>
-          <Text style={styles.hint}>Add Photos. Photos help us know what's going on and match you faster. ({images.length}/6)</Text>
+
+          <View style={styles.photoHeaderRow}>
+            <Text style={styles.photoHeading}>
+              Add Photos <Text style={styles.requiredAsterisk}>*</Text>
+            </Text>
+            <Text style={[styles.photoCount, images.length >= 3 && styles.photoCountValid]}>
+              {images.length}/6 (min 3)
+            </Text>
+          </View>
+          <Text style={styles.hint}>
+            Add clear photos. Good photos from different angles provide more context and help us match you faster with the right professional.
+          </Text>
 
           {images.length > 0 && (
             <View style={styles.imageGrid}>
               {images.map((img, index) => (
                 <View key={index} style={styles.imageThumbContainer}>
                   <Image source={{ uri: img.uri }} style={styles.imageThumb} />
-                  <TouchableOpacity style={styles.removeBadge} onPress={() => removeImage(index)}>
+                  <TouchableOpacity
+                    style={styles.removeBadge}
+                    onPress={() => removeImage(index)}
+                  >
                     <Ionicons name="close-circle" size={20} color="#ef4444" />
                   </TouchableOpacity>
                 </View>
@@ -93,22 +145,28 @@ export default function Details() {
           )}
         </ScrollView>
 
-        <View style={styles.footer}>
+        <View
+          style={[
+            styles.footer,
+            { paddingBottom: Math.max(insets.bottom + 12, Platform.OS === "android" ? 28 : 16) },
+          ]}
+        >
           <View style={styles.photoActions}>
             <TouchableOpacity style={styles.photoButton} onPress={pickImageFromLibrary}>
-              <Ionicons name="image-outline" size={24} color="#0d9488" />
+              <Ionicons name="image-outline" size={24} color="#1A6B6B" />
             </TouchableOpacity>
             <TouchableOpacity style={styles.photoButton} onPress={takePhotoWithCamera}>
-              <Ionicons name="camera-outline" size={24} color="#0d9488" />
+              <Ionicons name="camera-outline" size={24} color="#1A6B6B" />
             </TouchableOpacity>
           </View>
-          
-          <TouchableOpacity 
-            style={[styles.nextButton, !isNextEnabled && styles.nextButtonDisabled]}
-            disabled={!isNextEnabled}
-            onPress={() => router.push("/booking/review")}
+
+          <TouchableOpacity
+            style={[styles.nextButton, !isFormValid && styles.nextButtonDisabled]}
+            onPress={handleNext}
           >
-            <Text style={[styles.nextButtonText, !isNextEnabled && styles.nextButtonTextDisabled]}>
+            <Text
+              style={[styles.nextButtonText, !isFormValid && styles.nextButtonTextDisabled]}
+            >
               Next
             </Text>
           </TouchableOpacity>
@@ -122,13 +180,15 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#ffffff",
-    paddingTop: Platform.OS === 'android' ? 40 : 0,
+    paddingTop: Platform.OS === "android" ? 40 : 0,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
   },
   backButton: {
     width: 40,
@@ -145,35 +205,65 @@ const styles = StyleSheet.create({
     color: "#1f2937",
     fontWeight: "bold",
   },
+  requiredAsterisk: {
+    color: "#ef4444",
+    fontFamily: "Lato-Bold",
+  },
   container: {
     flex: 1,
   },
   scrollContent: {
-    padding: 24,
+    padding: 20,
     flexGrow: 1,
-    justifyContent: "flex-end",
-    paddingBottom: 40,
+    paddingBottom: 30,
+  },
+  explainerText: {
+    fontSize: 14,
+    fontFamily: "Lato",
+    color: "#4b5563",
+    lineHeight: 20,
+    marginBottom: 16,
   },
   inputWrapper: {
     borderWidth: 1,
     borderColor: "#e5e7eb",
     borderRadius: 12,
-    height: 180,
-    backgroundColor: "#ffffff",
+    height: 160,
+    backgroundColor: "#f9fafb",
+    marginBottom: 20,
   },
   textArea: {
     flex: 1,
     padding: 16,
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: "Lato",
     color: "#1f2937",
   },
+  photoHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  photoHeading: {
+    fontSize: 16,
+    fontFamily: "Lato-Bold",
+    color: "#1f2937",
+  },
+  photoCount: {
+    fontSize: 13,
+    fontFamily: "Lato-Bold",
+    color: "#dc2626",
+  },
+  photoCountValid: {
+    color: "#16a34a",
+  },
   hint: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: "Lato",
-    color: "#9ca3af",
-    marginTop: 12,
-    marginBottom: 12,
+    color: "#6b7280",
+    lineHeight: 18,
+    marginBottom: 14,
   },
   imageGrid: {
     flexDirection: "row",
@@ -183,15 +273,15 @@ const styles = StyleSheet.create({
   },
   imageThumbContainer: {
     position: "relative",
-    width: 70,
-    height: 70,
+    width: 72,
+    height: 72,
     borderRadius: 8,
-    overflow: "visible",
   },
   imageThumb: {
-    width: 70,
-    height: 70,
+    width: 72,
+    height: 72,
     borderRadius: 8,
+    backgroundColor: "#f3f4f6",
   },
   removeBadge: {
     position: "absolute",
@@ -204,7 +294,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: "#f3f4f6",
     backgroundColor: "#ffffff",
@@ -217,26 +308,19 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: "#f0fdfa",
+    backgroundColor: "#E8F5F5",
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryButton: {
-    backgroundColor: "#3b82f6", // Blue color when enabled
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    borderRadius: 30,
-    alignItems: "center",
-  },
   nextButton: {
-    backgroundColor: "#3b82f6", 
+    backgroundColor: "#1A6B6B",
     paddingVertical: 14,
-    paddingHorizontal: 40,
+    paddingHorizontal: 36,
     borderRadius: 30,
     alignItems: "center",
   },
   nextButtonDisabled: {
-    backgroundColor: "#e5e7eb", // Grey when disabled (e.g. text is empty)
+    backgroundColor: "#d1d5db",
   },
   nextButtonText: {
     fontSize: 16,
@@ -244,7 +328,6 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   nextButtonTextDisabled: {
-    color: "#9ca3af",
-  }
+    color: "#6b7280",
+  },
 });
-

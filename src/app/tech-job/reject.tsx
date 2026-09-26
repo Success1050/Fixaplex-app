@@ -11,9 +11,12 @@ export default function TechJobReject() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Why can't you take the job</Text>
+        <View style={styles.headerCentered}>
+          <Text style={styles.titleCentered}>Decline Job</Text>
+          <Text style={styles.subtitleCentered}>Please let us know why you can't accept this job.</Text>
+        </View>
 
-        <Text style={styles.label}>I can't take this job cause</Text>
+        <Text style={styles.label}>Reason for declining</Text>
         
         <TouchableOpacity 
           style={styles.dropdownButton} 
@@ -63,11 +66,23 @@ const styles = StyleSheet.create({
     padding: 24,
     flex: 1,
   },
-  title: {
+  headerCentered: {
+    alignItems: "center",
+    marginBottom: 32,
+  },
+  titleCentered: {
     fontSize: 22,
     fontFamily: "DemoOsbert-Bold",
     color: "#1f2937",
-    marginBottom: 40,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  subtitleCentered: {
+    fontSize: 14,
+    fontFamily: "Lato",
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 20,
   },
   label: {
     fontSize: 14,

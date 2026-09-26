@@ -123,7 +123,10 @@ export default function JobDetails() {
         <View style={styles.actionsContainer}>
           <TouchableOpacity 
             style={styles.actionCard}
-            onPress={() => router.push(`/job/feedback`)}
+            onPress={() => router.push({
+              pathname: "/job/feedback",
+              params: { booking_id: id }
+            })}
           >
             <View style={[styles.iconContainer, { backgroundColor: '#dcfce7' }]}>
               <Ionicons name="star-outline" size={24} color="#16a34a" />
@@ -137,7 +140,10 @@ export default function JobDetails() {
 
           <TouchableOpacity 
             style={styles.actionCard}
-            onPress={() => router.push(`/job/dispute`)}
+            onPress={() => router.push({
+              pathname: "/job/dispute",
+              params: { booking_id: id, booking_technician_id: id }
+            })}
           >
             <View style={[styles.iconContainer, { backgroundColor: '#fee2e2' }]}>
               <Ionicons name="warning-outline" size={24} color="#ef4444" />

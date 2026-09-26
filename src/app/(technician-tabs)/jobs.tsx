@@ -44,7 +44,16 @@ export default function TechnicianJobs() {
   }, []);
 
   // Split bookings based on status (4 is completed, others active excluding cancelled/pending)
-  const activeJobs = bookings.filter(b => ![4, -1, 0].includes(Number(b.booking_status || b.status)));
+  // Sort active jobs: In Progress (3), Arrived (6), On My Way (5), Client Confirmed (2), etc.
+  const activeJobs = bookings
+    .filter(b => ![4, -1, 0].includes(Number(b.booking_status || b.status)))
+    .sort((a, b) => {
+      const priorityOrder: Record<number, number> = { 3: 1, 6: 2, 5: 3, 2: 4, 7: 5, 1: 6 };
+      const pA = priorityOrder[Number(a.booking_status || a.status)] || 99;
+      const pB = priorityOrder[Number(b.booking_status || b.status)] || 99;
+      return pA - pB;
+    });
+
   const completedJobs = bookings.filter(b => Number(b.booking_status || b.status) === 4);
 
   const getStatusInfo = (statusNum: number | string, techStatus?: string | number) => {
@@ -60,7 +69,8 @@ export default function TechnicianJobs() {
       case 4: return { bg: '#10b981', text: '#ffffff', label: 'Completed' };
       case 5: return { bg: '#e0e7ff', text: '#4338ca', label: 'On My Way' };
       case 6: return { bg: '#dcfce7', text: '#15803d', label: 'Arrived' };
-      case 7: return { bg: '#fef3c7', text: '#D97706', label: 'Finished (Pending Review)' };
+      case 7: return { bg: '#fef3c7', text: '#D97706', label: 'Quote Review' };
+      case 8: return { bg: '#fef3c7', text: '#D97706', label: 'Finished (Pending Review)' };
       default: return { bg: '#1A6B6B', text: '#ffffff', label: 'Active' };
     }
   };
@@ -71,10 +81,16 @@ export default function TechnicianJobs() {
     return (
       <TouchableOpacity
         key={job.booking_id || job.id}
-        style={styles.jobCard}
+        style={[styles.jobCard, !isCompleted && styles.activeJobCard]}
         onPress={() => router.push(`/tech-job/${job.booking_id || job.id}` as any)}
       >
         <View style={styles.jobInfo}>
+          {!isCompleted && (
+            <View style={styles.prominentActiveBadge}>
+              <View style={styles.activeDot} />
+              <Text style={styles.prominentActiveText}>ACTIVE</Text>
+            </View>
+          )}
           <Text style={styles.jobTitle}>{job.service_name || job.title}</Text>
           <Text style={styles.jobSubtitle}>{job.address} • {job.booking_date || job.date_added}</Text>
         </View>
@@ -174,6 +190,33 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
+  },
+  activeJobCard: {
+    borderColor: "#99F6E4",
+    backgroundColor: "#F0FDFA",
+  },
+  prominentActiveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#CCFBF1",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 6,
+    gap: 4,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#0D9488",
+  },
+  prominentActiveText: {
+    fontSize: 10,
+    fontFamily: "Lato-Bold",
+    color: "#0F766E",
+    letterSpacing: 0.5,
   },
   jobInfo: {
     flex: 1,

@@ -13,6 +13,14 @@ export default function TechJobAccept() {
           <Ionicons name="chevron-back" size={24} color="#6b7280" />
         </TouchableOpacity>
 
+        <View style={styles.successHeader}>
+          <Ionicons name="checkmark-circle" size={54} color="#10b981" style={{ marginBottom: 12 }} />
+          <Text style={styles.successTitle}>Job Accepted</Text>
+          <Text style={styles.successSubtitle}>
+            You have successfully accepted this request. Please review the details and start your journey.
+          </Text>
+        </View>
+
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <Ionicons name="locate-outline" size={20} color="#6b7280" style={styles.icon} />
@@ -69,7 +77,26 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 32,
+    marginBottom: 20,
+  },
+  successHeader: {
+    alignItems: "center",
+    marginBottom: 28,
+    paddingHorizontal: 16,
+  },
+  successTitle: {
+    fontSize: 22,
+    fontFamily: "DemoOsbert-Bold",
+    color: "#1f2937",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  successSubtitle: {
+    fontSize: 14,
+    fontFamily: "Lato",
+    color: "#6b7280",
+    textAlign: "center",
+    lineHeight: 20,
   },
   infoCard: {
     borderWidth: 1,

@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { BASE_URL } from "../config/api";
 import { useAuthStore } from "../store/useAuthStore";
 
@@ -14,11 +15,17 @@ export default function Login() {
   const [role, setRole] = useState<'client' | 'technician'>('client');
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert("Error", "Please enter your email and password.");
+      return;
+    }
+
+    if (password.length < 8) {
+      Alert.alert("Error", "Password must be at least 8 characters.");
       return;
     }
 
@@ -59,6 +66,53 @@ export default function Login() {
         // Sync the internal store role
         setRoleStore(role === 'client' ? 'user' : 'technician');
 
+        // Check if technician is awaiting approval/verification
+        if (role === 'technician') {
+          const uData = response.data.userData;
+          const isRejected = uData?.status === -1 || uData?.status === '-1';
+          if (isRejected) {
+            Alert.alert(
+              "Application Rejected",
+              response.data.msg || "Your technician application was not approved. You can view the reason and re-apply.",
+              [
+                {
+                  text: "View Status & Re-apply",
+                  onPress: () => {
+                    if (router.canDismiss()) router.dismissAll();
+                    router.replace("/awaiting-approval" as any);
+                  },
+                },
+              ]
+            );
+            return;
+          }
+
+          const isPending = 
+            uData?.status === 0 || 
+            uData?.status === '0' || 
+            uData?.is_verified === 0 || 
+            uData?.is_verified === '0' || 
+            uData?.status === 'pending' || 
+            String(uData?.type) === '3';
+
+          if (isPending) {
+            Alert.alert(
+              "Waiting for Verification", 
+              response.data.msg || "Your technician application is awaiting verification. You will have full access once approved.",
+              [
+                { 
+                  text: "View Status", 
+                  onPress: () => {
+                    if (router.canDismiss()) router.dismissAll();
+                    router.replace("/awaiting-approval" as any);
+                  } 
+                }
+              ]
+            );
+            return;
+          }
+        }
+
         Alert.alert("Success", response.data.msg || "Login successful!");
 
         // Clear the navigation stack to prevent back-button loops
@@ -73,12 +127,35 @@ export default function Login() {
           router.replace("/(technician-tabs)" as any);
         }
       } else {
-        Alert.alert("Login Failed", response.data.msg || "Invalid credentials.");
+        const msg = response.data?.msg || "Invalid credentials.";
+        if (role === 'technician' && (msg.toLowerCase().includes("verif") || msg.toLowerCase().includes("pending") || msg.toLowerCase().includes("approv"))) {
+          Alert.alert(
+            "Waiting for Verification", 
+            msg || "Your account is awaiting approval. Please wait for an administrator to verify your credentials.",
+            [
+              { text: "View Status", onPress: () => router.push("/awaiting-approval" as any) },
+              { text: "OK", style: "cancel" }
+            ]
+          );
+        } else {
+          Alert.alert("Login Failed", "Email address or password is incorrect. Please try again.");
+        }
       }
     } catch (error: any) {
       console.error(error);
       const serverMsg = error.response?.data?.msg || error.message;
-      Alert.alert("Error", serverMsg || "Network error or server unavailable.");
+      if (role === 'technician' && serverMsg && (serverMsg.toLowerCase().includes("verif") || serverMsg.toLowerCase().includes("pending") || serverMsg.toLowerCase().includes("approv"))) {
+        Alert.alert(
+          "Waiting for Verification",
+          serverMsg,
+          [
+            { text: "View Status", onPress: () => router.push("/awaiting-approval" as any) },
+            { text: "OK", style: "cancel" }
+          ]
+        );
+      } else {
+        Alert.alert("Login Failed", "Email address or password is incorrect. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -90,8 +167,12 @@ export default function Login() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={styles.header}>
-        <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>Login to your account to continue</Text>
+        <Text style={styles.title}>Home Services, Made Easy</Text>
+        <Text style={styles.subtitle}>
+          {role === 'client' 
+            ? "Login to Connect with a Verified Local Technician" 
+            : "Login to Earn on Fixaplex"}
+        </Text>
       </View>
 
       {/* Role Tabs */}
@@ -126,15 +207,35 @@ export default function Login() {
 
         <View style={styles.inputContainer}>
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your password"
-            placeholderTextColor="#9ca3af"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+          <View style={styles.passwordWrapper}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Enter your password"
+              placeholderTextColor="#9ca3af"
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity 
+              style={styles.eyeButton} 
+              onPress={() => setShowPassword(!showPassword)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons 
+                name={showPassword ? "eye-off-outline" : "eye-outline"} 
+                size={22} 
+                color="#6b7280" 
+              />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        <TouchableOpacity 
+          style={styles.forgotPasswordContainer}
+          onPress={() => router.push("/forgot-password" as any)}
+        >
+          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
@@ -225,6 +326,38 @@ const styles = StyleSheet.create({
     fontFamily: "Lato",
     backgroundColor: "#f9fafb",
     color: "#1f2937",
+  },
+  passwordWrapper: {
+    height: 56,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 12,
+    backgroundColor: "#f9fafb",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+  },
+  passwordInput: {
+    flex: 1,
+    height: "100%",
+    fontSize: 16,
+    fontFamily: "Lato",
+    color: "#1f2937",
+  },
+  eyeButton: {
+    padding: 6,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  forgotPasswordContainer: {
+    alignSelf: "flex-end",
+    marginTop: -4,
+    marginBottom: 4,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    fontFamily: "Lato-Bold",
+    color: "#1A6B6B",
   },
   button: {
     height: 56,

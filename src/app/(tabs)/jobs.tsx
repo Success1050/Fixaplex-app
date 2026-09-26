@@ -71,6 +71,7 @@ export default function Bookings() {
       case 5: return { bg: '#e0e7ff', text: '#4338ca', label: 'On My Way' };
       case 6: return { bg: '#dbeafe', text: '#3B82F6', label: 'Arrived' };
       case 7: return { bg: '#fef3c7', text: '#D97706', label: 'Price Review' };
+      case 8: return { bg: '#e0f2fe', text: '#0284c7', label: 'Awaiting Sign-Off' };
       case -1: return { bg: '#fee2e2', text: '#DC2626', label: 'Cancelled' };
       default: return { bg: '#f3f4f6', text: '#4b5563', label: 'Pending' };
     }

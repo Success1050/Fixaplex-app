@@ -20,10 +20,6 @@ export default function TechOnboarding() {
   const [govIdDoc, setGovIdDoc] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchServices();
-  }, []);
-
   const fetchServices = async () => {
     try {
       const res = await axios.post(`${BASE_URL}/clients/home/services.php`);
@@ -36,6 +32,10 @@ export default function TechOnboarding() {
       setLoadingServices(false);
     }
   };
+
+  useEffect(() => {
+    fetchServices();
+  }, []);
 
   const toggleService = (id: string) => {
     if (selectedServices.includes(id)) {
@@ -184,7 +184,7 @@ export default function TechOnboarding() {
           <Text style={styles.sectionTitle}>2. Service Areas (Optional)</Text>
           <TextInput 
             style={styles.textInput} 
-            placeholder="e.g. Dublin 4, City Center" 
+            placeholder="Enter service areas (e.g. Dublin 1 - 24, County Dublin)" 
             placeholderTextColor="#9ca3af" 
             value={areas} 
             onChangeText={setAreas} 

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { View, Image, StyleSheet } from "react-native";
+import { View, Image, Text, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useAuthStore } from "../store/useAuthStore";
@@ -51,10 +51,10 @@ export default function Index() {
       }
     };
     
-    // Add a slight delay to show the splash screen
+    // Smooth splash delay with branding
     const timer = setTimeout(() => {
       checkAuth();
-    }, 1500);
+    }, 2500);
 
     return () => clearTimeout(timer);
   }, [router]);
@@ -66,6 +66,8 @@ export default function Index() {
         style={styles.logo}
         resizeMode="contain"
       />
+      <Text style={styles.brandTitle}>Fixaplex</Text>
+      <Text style={styles.brandSubtitle}>Home Services, Made Easy</Text>
     </View>
   );
 }
@@ -80,5 +82,20 @@ const styles = StyleSheet.create({
   logo: {
     width: 120,
     height: 120,
+    marginBottom: 12,
+  },
+  brandTitle: {
+    fontSize: 28,
+    fontFamily: "DemoOsbert-Bold",
+    fontWeight: "bold",
+    color: "#1A6B6B",
+    letterSpacing: 0.5,
+  },
+  brandSubtitle: {
+    fontSize: 14,
+    fontFamily: "Lato",
+    color: "#6b7280",
+    marginTop: 4,
   },
 });
+

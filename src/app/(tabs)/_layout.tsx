@@ -2,9 +2,11 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Platform } from "react-native";
+import { useAuthStore } from "../../store/useAuthStore";
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const userData = useAuthStore(state => state.userData);
 
   return (
     <Tabs
@@ -51,9 +53,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profile",
+          title: !userData ? "Login" : "Profile",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+            <Ionicons name={!userData ? "log-in-outline" : "person-outline"} size={size} color={color} />
           ),
         }}
       />

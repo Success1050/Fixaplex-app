@@ -36,10 +36,10 @@ export default function AdjustPrice() {
       });
 
       if (res.data?.success) {
-        Alert.alert("Success", "Price submitted successfully!");
+        Alert.alert("Success", "Quote submitted successfully!");
         router.replace("/(technician-tabs)/jobs");
       } else {
-        Alert.alert("Error", res.data?.msg || "Failed to submit price.");
+        Alert.alert("Error", res.data?.msg || "Failed to submit quote.");
       }
     } catch (err) {
       console.error(err);
@@ -55,16 +55,16 @@ export default function AdjustPrice() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color="#1f2937" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Submit Final Price</Text>
+        <Text style={styles.headerTitle}>Submit Final Quote</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-        <Text style={styles.label}>Original Estimate Price</Text>
+        <Text style={styles.label}>Original Estimated Quote</Text>
         <Text style={styles.estimatePrice}>€ {base_price || "0.00"}</Text>
 
-        <Text style={styles.label}>Your Final Price</Text>
+        <Text style={styles.label}>Your Final Quote</Text>
         <View style={styles.inputContainer}>
           <Text style={styles.currencyPrefix}>€</Text>
           <TextInput 
@@ -76,7 +76,7 @@ export default function AdjustPrice() {
           />
         </View>
 
-        <Text style={styles.label}>Reason for Change (Optional)</Text>
+        <Text style={styles.label}>Reason for Quote Adjustment (Optional)</Text>
         <View style={styles.textAreaContainer}>
           <TextInput 
             style={styles.textArea}
@@ -101,7 +101,7 @@ export default function AdjustPrice() {
           {loading ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
-            <Text style={styles.primaryButtonText}>Submit Final Price</Text>
+            <Text style={styles.primaryButtonText}>Submit Final Quote</Text>
           )}
         </TouchableOpacity>
       </View>

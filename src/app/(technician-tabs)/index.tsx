@@ -33,6 +33,7 @@ export default function TechnicianHome() {
   const setRole = useAuthStore(state => state.setRole);
   const isTechnicianOnboarded = useAuthStore(state => state.isTechnicianOnboarded);
   const userData = useAuthStore(state => state.userData);
+  const setUserData = useAuthStore(state => state.setUserData);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,12 +42,63 @@ export default function TechnicianHome() {
   const [totalJobs, setTotalJobs] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isAvailable, setIsAvailable] = useState<boolean>(() => {
+    if (userData?.availability !== undefined && userData?.availability !== null) {
+      return Number(userData.availability) === 1;
+    }
+    return false;
+  });
+  const [togglingAvailability, setTogglingAvailability] = useState(false);
 
   // Reject Modal State
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+
+  const handleToggleAvailability = async () => {
+    const prev = isAvailable;
+    const newVal = !isAvailable;
+    setIsAvailable(newVal);
+    setTogglingAvailability(true);
+
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      if (!token) return;
+
+      const formData = new FormData();
+      formData.append('availability', newVal ? '1' : '0');
+      formData.append('is_available', newVal ? '1' : '0');
+      formData.append('status', newVal ? '1' : '0');
+      formData.append('is_online', newVal ? '1' : '0');
+
+      const res = await axios.post(`${BASE_URL}/technicians/accounts/set_availability.php`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (res.data && res.data.success) {
+        const serverAvail =
+          res.data.availability !== undefined
+            ? Number(res.data.availability) === 1
+            : newVal;
+        setIsAvailable(serverAvail);
+        const updated = { ...userData, availability: serverAvail ? 1 : 0 };
+        setUserData(updated);
+        await SecureStore.setItemAsync('userData', JSON.stringify(updated));
+      } else {
+        setIsAvailable(prev);
+        Alert.alert("Update Failed", res.data?.msg || "Could not update availability.");
+      }
+    } catch (err) {
+      setIsAvailable(prev);
+      Alert.alert("Network Error", "Unable to update availability status. Please check your connection.");
+    } finally {
+      setTogglingAvailability(false);
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -64,6 +116,14 @@ export default function TechnicianHome() {
         setBookings(res.data.bookings || []);
         setTotalJobs(res.data.total_jobs || 0);
         setTotalEarnings(res.data.totalEarnings || 0);
+
+        if (res.data.availability !== undefined && res.data.availability !== null) {
+          const serverAvail = Number(res.data.availability) === 1;
+          setIsAvailable(serverAvail);
+          const updated = { ...userData, availability: serverAvail ? 1 : 0 };
+          setUserData(updated);
+          SecureStore.setItemAsync('userData', JSON.stringify(updated));
+        }
       }
     } catch (err) {
       console.error("Failed to fetch dashboard data:", err);
@@ -97,7 +157,8 @@ export default function TechnicianHome() {
       case 4: return { bg: '#10b981', text: '#ffffff', label: 'Completed' };
       case 5: return { bg: '#e0e7ff', text: '#4338ca', label: 'On My Way' };
       case 6: return { bg: '#dcfce7', text: '#15803d', label: 'Arrived' };
-      case 7: return { bg: '#fef3c7', text: '#D97706', label: 'Finished (Pending Review)' };
+      case 7: return { bg: '#fef3c7', text: '#D97706', label: 'Quote Review' };
+      case 8: return { bg: '#fef3c7', text: '#D97706', label: 'Finished (Pending Review)' };
       default: return { bg: '#1A6B6B', text: '#ffffff', label: 'Active' };
     }
   };
@@ -106,7 +167,10 @@ export default function TechnicianHome() {
     useCallback(() => {
       fetchUnreadCount();
       fetchDashboardData();
-    }, [userData])
+      if (userData?.availability !== undefined && userData?.availability !== null) {
+        setIsAvailable(Number(userData.availability) === 1);
+      }
+    }, [userData?.availability])
   );
 
   const onRefresh = useCallback(() => {
@@ -218,6 +282,31 @@ export default function TechnicianHome() {
         >
           {renderHeader()}
 
+          {/* Prominent Availability Card (Tech Items 5, 18) */}
+          <TouchableOpacity 
+            style={[styles.availabilityCard, isAvailable ? styles.availabilityCardOnline : styles.availabilityCardOffline]}
+            activeOpacity={0.85}
+            disabled={togglingAvailability}
+            onPress={handleToggleAvailability}
+          >
+            <View style={styles.availabilityStatusDotWrapper}>
+              <View style={[styles.availabilityStatusDot, isAvailable ? styles.dotOnline : styles.dotOffline]} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.availabilityMainTitle}>
+                {isAvailable ? "You're Available" : "You're Offline"}
+              </Text>
+              <Text style={styles.availabilitySubText}>
+                {isAvailable ? "Ready to receive new jobs • Tap to change" : "Paused • Tap to go online"}
+              </Text>
+            </View>
+            <View style={[styles.switchPill, isAvailable ? styles.switchPillOnline : styles.switchPillOffline]}>
+              <Text style={[styles.switchPillText, isAvailable ? styles.switchTextOnline : styles.switchTextOffline]}>
+                {isAvailable ? "ONLINE" : "OFFLINE"}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
           {pendingBookings.map((job: any, idx: number) => (
             <View key={idx} style={styles.pendingCard}>
               <View style={styles.pendingCardHeader}>
@@ -294,10 +383,20 @@ export default function TechnicianHome() {
             ) : (
               bookings.slice(0, 5).map((job: any, idx: number) => {
                 const statusInfo = getStatusInfo(job.booking_status || job.status);
+                const jobId = job.booking_id || job.id;
                 return (
-                  <View key={idx} style={styles.jobRow}>
+                  <TouchableOpacity
+                    key={jobId || idx}
+                    style={styles.jobRow}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (jobId) {
+                        router.push(`/tech-job/${jobId}` as any);
+                      }
+                    }}
+                  >
                     <View style={{ flex: 1, paddingRight: 10 }}>
-                      <Text style={styles.jobTitle} numberOfLines={1}>{job.service_name}</Text>
+                      <Text style={styles.jobTitle} numberOfLines={1}>{job.service_name || job.title}</Text>
                       <Text style={styles.jobSubtitle} numberOfLines={1}>{job.address}</Text>
                     </View>
                     <View style={styles.jobRight}>
@@ -306,7 +405,8 @@ export default function TechnicianHome() {
                         <Text style={[styles.statusText, { color: statusInfo.text }]}>{statusInfo.label}</Text>
                       </View>
                     </View>
-                  </View>
+                    <Ionicons name="chevron-forward" size={16} color="#9ca3af" style={{ marginLeft: 6 }} />
+                  </TouchableOpacity>
                 );
               })
             )}
@@ -677,5 +777,74 @@ const styles = StyleSheet.create({
   modalSubmitText: {
     color: '#ffffff',
     fontFamily: 'Lato-Bold',
-  }
+  },
+  availabilityCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    gap: 12,
+  },
+  availabilityCardOnline: {
+    backgroundColor: "#F0FDFA",
+    borderColor: "#99F6E4",
+  },
+  availabilityCardOffline: {
+    backgroundColor: "#F9FAFB",
+    borderColor: "#E5E7EB",
+  },
+  availabilityStatusDotWrapper: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.04)",
+  },
+  availabilityStatusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  dotOnline: {
+    backgroundColor: "#10B981",
+  },
+  dotOffline: {
+    backgroundColor: "#9CA3AF",
+  },
+  availabilityMainTitle: {
+    fontSize: 16,
+    fontFamily: "Lato-Bold",
+    color: "#1F2937",
+    marginBottom: 2,
+  },
+  availabilitySubText: {
+    fontSize: 12,
+    fontFamily: "Lato",
+    color: "#6B7280",
+  },
+  switchPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  switchPillOnline: {
+    backgroundColor: "#1A6B6B",
+  },
+  switchPillOffline: {
+    backgroundColor: "#E5E7EB",
+  },
+  switchPillText: {
+    fontSize: 11,
+    fontFamily: "Lato-Bold",
+    letterSpacing: 0.5,
+  },
+  switchTextOnline: {
+    color: "#ffffff",
+  },
+  switchTextOffline: {
+    color: "#6B7280",
+  },
 });

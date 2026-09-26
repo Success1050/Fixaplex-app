@@ -1,8 +1,10 @@
 import { useRouter } from "expo-router";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuthStore } from "../store/useAuthStore";
 
 export default function Welcome() {
   const router = useRouter();
+  const setGuestId = useAuthStore(state => state.setGuestId);
 
   return (
     <View style={styles.container}>
@@ -25,8 +27,18 @@ export default function Welcome() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.button, styles.registerButton]}
+          onPress={() => router.push("/role-selection" as any)}
+        >
+          <Text style={styles.registerButtonText}>Create an Account</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.button, styles.visitorButton]}
-          onPress={() => router.replace("/(tabs)" as any)}
+          onPress={() => {
+            setGuestId("Guest244444");
+            router.replace("/(tabs)" as any);
+          }}
         >
           <Text style={styles.visitorButtonText}>Continue as Guest</Text>
         </TouchableOpacity>
@@ -91,5 +103,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#101828", // Dark gray from guide
+  },
+  registerButton: {
+    backgroundColor: "#ffffff",
+  },
+  registerButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1A6B6B",
   },
 });

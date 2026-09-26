@@ -5,11 +5,13 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BASE_URL, IMAGE_BASE_URL } from "../config/api";
 import { useAuthStore } from "../store/useAuthStore";
 
 export default function EditTechProfile() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const userData = useAuthStore(state => state.userData);
   const setUserData = useAuthStore(state => state.setUserData);
 
@@ -171,10 +173,10 @@ export default function EditTechProfile() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Phone Number</Text>
+              <Text style={styles.label}>Mobile Number</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Enter your phone number"
+                placeholder="Enter your mobile number"
                 placeholderTextColor="#9ca3af"
                 keyboardType="phone-pad"
                 value={phone}
@@ -207,7 +209,7 @@ export default function EditTechProfile() {
           </View>
         </ScrollView>
 
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 12, Platform.OS === 'android' ? 28 : 16) }]}>
           <TouchableOpacity
             style={[styles.submitButton, loading && styles.submitButtonDisabled]}
             disabled={loading}

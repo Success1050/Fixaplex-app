@@ -3,6 +3,8 @@ import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { StripeProvider } from '@stripe/stripe-react-native';
+import { STRIPE_PUBLISHABLE_KEY } from "../config/api";
 
 // Prevent auto hide
 SplashScreen.preventAutoHideAsync();
@@ -28,14 +30,26 @@ export default function RootLayout() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="welcome" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="register" />
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-    </QueryClientProvider>
+    <StripeProvider
+      publishableKey={STRIPE_PUBLISHABLE_KEY}
+      merchantIdentifier="merchant.com.john_1050.ibb"
+      urlScheme="ibb"
+    >
+      <QueryClientProvider client={queryClient}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="register" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(technician-tabs)" />
+          <Stack.Screen name="bank-details" />
+          <Stack.Screen name="payment-methods" />
+          <Stack.Screen name="documents-verification" />
+          <Stack.Screen name="awaiting-approval" />
+          <Stack.Screen name="re-apply" />
+        </Stack>
+      </QueryClientProvider>
+    </StripeProvider>
   );
 }

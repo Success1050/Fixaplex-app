@@ -37,8 +37,26 @@ export default function TechJobDetails() {
       const token = await SecureStore.getItemAsync('userToken');
       if (!token) return;
 
+      let resolvedBookingId = id as string;
+      if (id && isNaN(Number(id))) {
+        try {
+          const jobsRes = await axios.post(`${BASE_URL}/technicians/jobs/get_jobs.php`, {}, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (jobsRes.data?.success && Array.isArray(jobsRes.data.bookings)) {
+            const match = jobsRes.data.bookings.find((b: any) =>
+              String(b.booking_code || '').toUpperCase() === String(id).toUpperCase() ||
+              String(b.booking_id || b.id) === String(id)
+            );
+            if (match) {
+              resolvedBookingId = String(match.booking_id || match.id);
+            }
+          }
+        } catch (e) {}
+      }
+
       const formData = new FormData();
-      formData.append('booking_id', id as string);
+      formData.append('booking_id', resolvedBookingId);
 
       const res = await axios.post(`${BASE_URL}/technicians/jobs/get_booking_details.php`, formData, {
         headers: {
@@ -260,7 +278,12 @@ export default function TechJobDetails() {
           <Text style={styles.serviceTitle}>{booking.service_name || booking.title || "Service Request"}</Text>
 
           {booking.booking_charges ? (
-            <Text style={styles.priceText}>Base Price: €{booking.booking_charges}</Text>
+            <Text style={styles.priceText}>Base Quote: €{booking.booking_charges}</Text>
+          ) : null}
+          {myTechRecord?.amount_paid && String(myTechRecord.amount_paid) !== String(booking.booking_charges) ? (
+            <Text style={[styles.priceText, { color: '#059669', fontSize: 16, marginTop: 4 }]}>
+              Final Quote Submitted: €{myTechRecord.amount_paid}
+            </Text>
           ) : null}
 
           <View style={styles.divider} />
@@ -299,6 +322,19 @@ export default function TechJobDetails() {
             </View>
           ) : null}
         </View>
+
+        {/* Status 7: Quote Review Phase Notice (Image 2) */}
+        {Number(booking.status) === 7 && (
+          <View style={styles.quoteStatusBox}>
+            <View style={styles.quoteStatusHeaderRow}>
+              <Ionicons name="receipt-outline" size={22} color="#b45309" />
+              <Text style={styles.quoteStatusTitle}>Quote Review Phase</Text>
+            </View>
+            <Text style={styles.quoteStatusText}>
+              Once the customer accepts the quote, tap "Start Job (In Progress)" below to begin work. If client requested changes, tap "Revise Quote".
+            </Text>
+          </View>
+        )}
 
         {/* Problem Photos */}
         {images && images.length > 0 && (
@@ -376,6 +412,34 @@ export default function TechJobDetails() {
             disabled={actionLoading}
           >
             <Text style={styles.progressBtnText}>Submit Final Price</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Status 7: Quote Review - Start Job (In Progress) or Revise Quote */}
+      {Number(booking.status) === 7 && (
+        <View style={styles.bottomActions}>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.secondaryActionBtn]}
+            onPress={handleGoToAdjustPrice}
+            disabled={actionLoading}
+          >
+            <Ionicons name="pricetag-outline" size={16} color="#1A6B6B" style={{ marginRight: 6 }} />
+            <Text style={styles.secondaryActionBtnText}>Revise Quote</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.progressBtn, { flex: 2 }]}
+            onPress={() => handleChangeStatus(3)}
+            disabled={actionLoading}
+          >
+            {actionLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Ionicons name="play" size={18} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.progressBtnText}>Start Job (In Progress)</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -710,5 +774,43 @@ const styles = StyleSheet.create({
   modalSubmitText: {
     color: '#ffffff',
     fontFamily: 'Lato-Bold',
-  }
+  },
+  secondaryActionBtn: {
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1.5,
+    borderColor: '#1A6B6B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryActionBtnText: {
+    color: '#1A6B6B',
+    fontFamily: 'Lato-Bold',
+    fontSize: 15,
+  },
+  quoteStatusBox: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1.5,
+    borderColor: '#FDE68A',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+  },
+  quoteStatusHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  quoteStatusTitle: {
+    fontSize: 16,
+    fontFamily: 'Lato-Bold',
+    color: '#92400E',
+  },
+  quoteStatusText: {
+    fontSize: 14,
+    fontFamily: 'Lato',
+    color: '#78350F',
+    lineHeight: 20,
+  },
 });

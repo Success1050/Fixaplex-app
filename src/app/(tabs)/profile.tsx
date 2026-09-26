@@ -1,10 +1,11 @@
-import React from "react";
-import { View, Text, StyleSheet, SafeAreaView, Platform, TouchableOpacity, ScrollView, Image } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, SafeAreaView, Platform, TouchableOpacity, ScrollView, Image, Linking, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
+import axios from "axios";
 import { useAuthStore } from "../../store/useAuthStore";
-import { IMAGE_BASE_URL } from "../../config/api";
+import { BASE_URL, IMAGE_BASE_URL } from "../../config/api";
 
 const ProfileOption = ({ icon, title, subtitle, color = "#4b5563", hideBorder = false, onPress }: any) => (
   <TouchableOpacity style={[styles.optionContainer, !hideBorder && styles.optionBorder]} onPress={onPress}>
@@ -22,24 +23,73 @@ const ProfileOption = ({ icon, title, subtitle, color = "#4b5563", hideBorder = 
 export default function Profile() {
   const router = useRouter();
   const userData = useAuthStore(state => state.userData);
+  const guestId = useAuthStore(state => state.guestId);
   const setRole = useAuthStore(state => state.setRole);
+
+  const [contacts, setContacts] = useState<{ whatsapp?: string; phone?: string } | null>(null);
+
+  useEffect(() => {
+    const fetchContacts = async () => {
+      try {
+        const res = await axios.get(`${BASE_URL}/technicians/accounts/get_contacts.php`);
+        console.log("Contact details response:", res.data);
+        if (res.data?.success && res.data?.data) {
+          setContacts(res.data.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch contact details:", err);
+      }
+    };
+
+    fetchContacts();
+  }, []);
+
+  const handleWhatsApp = (number?: string) => {
+    const phoneNum = number || contacts?.whatsapp;
+    if (!phoneNum) {
+      Alert.alert("Contact Unavailable", "WhatsApp support number is currently not configured.");
+      return;
+    }
+    const clean = phoneNum.replace(/[^0-9]/g, "");
+    const intlNumber = clean.startsWith("0") ? "353" + clean.slice(1) : clean;
+    const url = `https://wa.me/${intlNumber}`;
+    Linking.openURL(url).catch(() => {
+      Linking.openURL(`https://api.whatsapp.com/send?phone=${clean}`);
+    });
+  };
+
+  const handlePhoneCall = (number?: string) => {
+    const phoneNum = number || contacts?.phone;
+    if (!phoneNum) {
+      Alert.alert("Contact Unavailable", "Support phone number is currently not configured.");
+      return;
+    }
+    Linking.openURL(`tel:${phoneNum}`);
+  };
 
   const handleLogout = async () => {
     await SecureStore.deleteItemAsync('userToken');
+    await SecureStore.deleteItemAsync('userData');
+    useAuthStore.getState().setUserData(null);
     setRole('user' as any);
     router.replace('/login');
   };
+
+  const isGuest = !userData;
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={styles.headerTitle}>{isGuest ? "Account" : "Profile"}</Text>
         </View>
 
         <View style={styles.profileCard}>
-          <TouchableOpacity style={styles.avatarContainer} onPress={() => router.push("/edit-profile")}>
+          <TouchableOpacity 
+            style={styles.avatarContainer} 
+            onPress={() => isGuest ? router.push("/login") : router.push("/edit-profile")}
+          >
             {userData?.pic ? (
               <Image 
                 source={{ uri: userData.pic.startsWith('http') ? userData.pic : `${IMAGE_BASE_URL}/${userData.pic}` }} 
@@ -47,16 +97,32 @@ export default function Profile() {
               />
             ) : (
               <View style={styles.avatarFallback}>
-                <Text style={styles.avatarFallbackText}>{userData?.full_name ? userData.full_name.charAt(0).toUpperCase() : 'U'}</Text>
+                <Text style={styles.avatarFallbackText}>
+                  {userData?.full_name ? userData.full_name.charAt(0).toUpperCase() : (isGuest ? 'G' : 'U')}
+                </Text>
               </View>
             )}
-            <View style={styles.editBadge}>
-              <Ionicons name="pencil" size={12} color="#ffffff" />
-            </View>
+            {!isGuest && (
+              <View style={styles.editBadge}>
+                <Ionicons name="pencil" size={12} color="#ffffff" />
+              </View>
+            )}
           </TouchableOpacity>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{userData?.full_name || 'User'}</Text>
-            <Text style={styles.profileEmail}>{userData?.email || ''}</Text>
+            <Text style={styles.profileName}>
+              {userData?.full_name || guestId || 'Guest User'}
+            </Text>
+            <Text style={styles.profileEmail}>
+              {userData?.email || (isGuest ? 'Login to access full features' : '')}
+            </Text>
+            {isGuest && (
+              <TouchableOpacity 
+                style={styles.guestLoginButton} 
+                onPress={() => router.push("/login")}
+              >
+                <Text style={styles.guestLoginButtonText}>Log In / Register</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -67,44 +133,83 @@ export default function Profile() {
             title="Personal Details" 
             subtitle="Name, email, phone number" 
             color="#3b82f6" 
-            onPress={() => router.push("/edit-profile")}
+            onPress={() => isGuest ? router.push("/login") : router.push("/edit-profile")}
+          />
+          <ProfileOption 
+            icon="location-outline" 
+            title="Address" 
+            subtitle="Manage your address" 
+            color="#10b981" 
+            onPress={() => isGuest ? router.push("/login") : router.push("/edit-profile")}
           />
           <ProfileOption 
             icon="card-outline" 
             title="Payment Methods" 
-            subtitle="Manage your saved cards" 
+            subtitle={
+              userData?.bank_details?.iban_formatted
+                ? `${userData.bank_details.iban_formatted.slice(0, 4)} •••• ${userData.bank_details.iban_formatted.slice(-4)}`
+                : userData?.bank_details?.iban || userData?.iban
+                ? `IBAN •••• ${(userData?.bank_details?.iban || userData?.iban).slice(-4)}`
+                : "Cards & refund bank details"
+            } 
             color="#8b5cf6" 
-          />
-          <ProfileOption 
-            icon="location-outline" 
-            title="Saved Addresses" 
-            subtitle="Home, work & other locations" 
-            color="#10b981" 
             hideBorder
+            onPress={() => (isGuest ? router.push("/login") : router.push("/payment-methods" as any))}
           />
         </View>
 
-        <Text style={styles.sectionTitle}>General</Text>
+        <Text style={styles.sectionTitle}>Support & Contact</Text>
         <View style={styles.sectionGroup}>
           <ProfileOption 
-            icon="settings-outline" 
-            title="Settings" 
-            subtitle="Notifications, security" 
-            color="#64748b" 
+            icon="logo-whatsapp" 
+            title="WhatsApp Support" 
+            subtitle={contacts?.whatsapp ? `Chat on ${contacts.whatsapp}` : "Chat with Fixaplex support"} 
+            color="#25D366" 
+            onPress={() => handleWhatsApp(contacts?.whatsapp)}
           />
           <ProfileOption 
-            icon="help-buoy-outline" 
-            title="Help & Support" 
-            subtitle="FAQ, contact us" 
+            icon="call-outline" 
+            title="Phone Support" 
+            subtitle={contacts?.phone ? `Call ${contacts.phone}` : "Speak with an agent"} 
+            color="#1A6B6B" 
+            onPress={() => handlePhoneCall(contacts?.phone)}
+          />
+          <ProfileOption 
+            icon="help-circle-outline" 
+            title="Frequently Asked Questions" 
+            subtitle="Quick answers to common questions" 
             color="#f59e0b" 
+            onPress={() => router.push("/faq")}
           />
           <ProfileOption 
-            icon="log-out-outline" 
-            title="Log Out" 
-            color="#ef4444" 
+            icon="chatbubble-ellipses-outline" 
+            title="Feedback" 
+            subtitle="Tell us how you feel" 
+            color="#0d9488" 
             hideBorder
-            onPress={handleLogout}
+            onPress={() => router.push("/job/feedback")}
           />
+        </View>
+
+        <Text style={styles.sectionTitle}>Account Actions</Text>
+        <View style={styles.sectionGroup}>
+          {!isGuest ? (
+            <ProfileOption 
+              icon="log-out-outline" 
+              title="Log Out" 
+              color="#ef4444" 
+              hideBorder
+              onPress={handleLogout}
+            />
+          ) : (
+            <ProfileOption 
+              icon="log-in-outline" 
+              title="Log In" 
+              color="#1A6B6B" 
+              hideBorder
+              onPress={() => router.push("/login")}
+            />
+          )}
         </View>
 
         <Text style={styles.versionText}>Version 1.0.0</Text>
@@ -192,6 +297,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Lato",
     color: "#6b7280",
+  },
+  guestLoginButton: {
+    marginTop: 10,
+    backgroundColor: "#1A6B6B",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+  },
+  guestLoginButtonText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontFamily: "Lato-Bold",
   },
   sectionTitle: {
     fontSize: 14,

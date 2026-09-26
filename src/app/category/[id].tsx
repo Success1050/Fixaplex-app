@@ -20,43 +20,30 @@ export default function CategoryServicesScreen() {
   // Radio button state (only one service can be selected)
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedServiceName, setSelectedServiceName] = useState<string | null>(null);
+  const [selectedMinPrice, setSelectedMinPrice] = useState<string>("");
+  const [selectedMaxPrice, setSelectedMaxPrice] = useState<string>("");
 
   const setServiceId = useBookingStore(state => state.setServiceId);
   const resetBooking = useBookingStore(state => state.reset);
   const setCategoryInfo = useBookingStore(state => state.setCategoryInfo);
+  const setPriceEstimate = useBookingStore(state => state.setPriceEstimate);
 
   useEffect(() => {
     const fetchCategoryServices = async () => {
       try {
         setLoading(true);
         const formData = new FormData();
-        formData.append("id", id as string);
+        formData.append("category", id as string);
         
         const res = await axios.post(`${BASE_URL}/clients/home/category_services.php`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
         
-        console.log(`[CategoryServices id=${id}] Response:`, JSON.stringify(res.data, null, 2).slice(0, 500));
+        console.log(`[CategoryServices category=${id}] Response:`, JSON.stringify(res.data, null, 2).slice(0, 500));
         
         setData(res.data);
-        
-        // Expand the section matching the requested ID
-        if (Array.isArray(res.data) && res.data.length > 0) {
-          const matching = res.data.find((c: any) => c.id.toString() === id.toString());
-          const targetId = matching ? matching.id : res.data[0].id;
-          setExpandedSections({ [targetId]: true });
-          setInitialExpandedId(targetId.toString());
-        } else if (res.data?.categories?.length > 0) {
-          const matching = res.data.categories.find((c: any) => c.id.toString() === id.toString());
-          const targetId = matching ? matching.id : res.data.categories[0].id;
-          setExpandedSections({ [targetId]: true });
-          setInitialExpandedId(targetId.toString());
-        } else if (res.data?.sub_categories?.length > 0) {
-          const matching = res.data.sub_categories.find((c: any) => c.id.toString() === id.toString());
-          const targetId = matching ? matching.id : res.data.sub_categories[0].id;
-          setExpandedSections({ [targetId]: true });
-          setInitialExpandedId(targetId.toString());
-        }
+        // Keep all dropdown sections closed initially by default
+        setExpandedSections({});
       } catch (err) {
         console.error("Failed to fetch category services:", err);
       } finally {
@@ -83,7 +70,8 @@ export default function CategoryServicesScreen() {
     resetBooking();
     setServiceId(selectedServiceId);
     setCategoryInfo(id as string, selectedServiceName || name as string);
-    router.push("/booking/schedule");
+    setPriceEstimate(selectedMinPrice, selectedMaxPrice);
+    router.push("/booking/details");
   };
 
   let sectionsToRender = [];
@@ -105,7 +93,7 @@ export default function CategoryServicesScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color="#1f2937" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{name ? `I need a ${name.toString().toLowerCase()}` : "Select a service"}</Text>
+        <Text style={styles.headerTitle}>What services do you need?</Text>
       </View>
 
       <ScrollView ref={scrollViewRef} contentContainerStyle={styles.container}>
@@ -156,6 +144,8 @@ export default function CategoryServicesScreen() {
                             onPress={() => {
                               setSelectedServiceId(service.id.toString());
                               setSelectedServiceName(service.name);
+                              setSelectedMinPrice(service.min_price?.toString() || "");
+                              setSelectedMaxPrice(service.max_price?.toString() || "");
                             }}
                             activeOpacity={0.7}
                           >
@@ -238,22 +228,22 @@ const styles = StyleSheet.create({
   },
   sectionBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: '#f1f5f9',
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 18,
     paddingVertical: 20,
   },
   sectionTitle: {
     fontSize: 16,
     fontFamily: 'Lato-Bold',
-    color: '#4b5563',
+    color: '#334155',
   },
   servicesList: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingBottom: 16,
   },
   serviceItem: {
@@ -262,12 +252,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   radioCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 1.5,
     borderColor: '#d1d5db',
-    marginRight: 12,
+    marginRight: 14,
     marginTop: 2,
     justifyContent: 'center',
     alignItems: 'center',
@@ -286,25 +276,25 @@ const styles = StyleSheet.create({
   },
   serviceName: {
     fontSize: 15,
-    fontFamily: 'Lato-Regular',
-    color: '#9ca3af',
+    fontFamily: 'Lato',
+    color: '#64748b',
     marginBottom: 4,
   },
   servicePrice: {
     fontSize: 13,
-    fontFamily: 'Lato-Bold',
-    color: '#d1d5db',
+    fontFamily: 'Lato',
+    color: '#94a3b8',
   },
   noServicesText: {
-    fontFamily: 'Lato-Regular',
-    color: '#9ca3af',
+    fontFamily: 'Lato',
+    color: '#94a3b8',
     fontStyle: 'italic',
   },
   noDataText: {
     textAlign: 'center',
     marginTop: 40,
-    fontFamily: 'Lato-Regular',
-    color: '#6b7280',
+    fontFamily: 'Lato',
+    color: '#64748b',
   },
   footer: {
     padding: 24,
@@ -315,14 +305,14 @@ const styles = StyleSheet.create({
   },
   nextButton: {
     paddingVertical: 16,
-    borderRadius: 24,
+    borderRadius: 28,
     alignItems: "center",
   },
   nextButtonActive: {
     backgroundColor: "#1A6B6B",
   },
   nextButtonDisabled: {
-    backgroundColor: "#d1d5db",
+    backgroundColor: "#cbd5e1",
   },
   nextButtonText: {
     color: "#ffffff",

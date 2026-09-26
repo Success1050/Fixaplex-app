@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, SafeAreaView, Platform, TouchableOpacity, TextInput, KeyboardAvoidingView, ScrollView, Alert, ActivityIndicator, Image } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as SecureStore from "expo-secure-store";
 import * as ImagePicker from "expo-image-picker";
 import axios from "axios";
@@ -10,6 +11,7 @@ import { useAuthStore } from "../store/useAuthStore";
 
 export default function EditProfile() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const userData = useAuthStore(state => state.userData);
   const setUserData = useAuthStore(state => state.setUserData);
 
@@ -171,10 +173,10 @@ export default function EditProfile() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Phone Number</Text>
+              <Text style={styles.label}>Mobile Number</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Enter your phone number"
+                placeholder="Enter your mobile number"
                 placeholderTextColor="#9ca3af"
                 keyboardType="phone-pad"
                 value={phone}
@@ -207,7 +209,7 @@ export default function EditProfile() {
           </View>
         </ScrollView>
 
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 12, Platform.OS === 'android' ? 28 : 16) }]}>
           <TouchableOpacity 
             style={[styles.submitButton, loading && styles.submitButtonDisabled]} 
             disabled={loading}
