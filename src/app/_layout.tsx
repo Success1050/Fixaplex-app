@@ -45,6 +45,7 @@ export default function RootLayout() {
           <Stack.Screen name="(technician-tabs)" />
           <Stack.Screen name="bank-details" />
           <Stack.Screen name="payment-methods" />
+          <Stack.Screen name="manage-address" />
           <Stack.Screen name="documents-verification" />
           <Stack.Screen name="awaiting-approval" />
           <Stack.Screen name="re-apply" />

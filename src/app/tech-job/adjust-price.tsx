@@ -8,7 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 export default function AdjustPrice() {
   const router = useRouter();
-  const { assignment_id, base_price } = useLocalSearchParams();
+  const { assignment_id, base_price, price_range } = useLocalSearchParams();
   
   const [price, setPrice] = useState(base_price ? String(base_price) : "");
   const [reason, setReason] = useState("");
@@ -66,7 +66,9 @@ export default function AdjustPrice() {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
         <Text style={styles.label}>Original Estimated Quote</Text>
-        <Text style={styles.estimatePrice}>€ {base_price || "0.00"}</Text>
+        <Text style={styles.estimatePrice}>
+          {price_range ? String(price_range) : `€ ${base_price || "0.00"}`}
+        </Text>
 
         <Text style={styles.label}>Your Final Quote</Text>
         <View style={styles.inputContainer}>

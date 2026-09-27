@@ -55,14 +55,14 @@ export default function Schedule() {
           savedAddress.county || "",
           savedAddress.postcode || ""
         );
-      } else if (userData?.address) {
+      } else if (userData?.address_line1 || userData?.address) {
         setFullAddress(
-          userData.address,
-          addressLine2,
-          addressLine3,
+          userData.address_line1 || userData.address || "",
+          userData.address_line2 || addressLine2 || "",
+          userData.address_line3 || addressLine3 || "",
           town || userData.town || "",
           county || userData.county || "",
-          postcode || userData.postcode || userData.eircode || ""
+          postcode || userData.eircode || userData.postcode || ""
         );
       }
     }
