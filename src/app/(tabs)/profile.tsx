@@ -140,7 +140,7 @@ export default function Profile() {
             title="Address" 
             subtitle="Manage your address" 
             color="#10b981" 
-            onPress={() => isGuest ? router.push("/login") : router.push("/edit-profile")}
+            onPress={() => isGuest ? router.push("/login") : router.push("/manage-address" as any)}
           />
           <ProfileOption 
             icon="card-outline" 

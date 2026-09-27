@@ -25,6 +25,7 @@ export default function TechJobDetails() {
 
   const [loading, setLoading] = useState(true);
   const [details, setDetails] = useState<any>(null);
+  const [servicePriceRange, setServicePriceRange] = useState<string | null>(null);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
@@ -77,6 +78,38 @@ export default function TechJobDetails() {
 
       if (res.data && res.data.success) {
         setDetails(res.data);
+        console.log("tech job get_booking_details response:", res.data);
+
+        const b = res.data.booking || {};
+        const hasDirectRange = 
+          b.price_range || 
+          b.service_price_range || 
+          b.priceRange || 
+          res.data.price_range || 
+          res.data.service_price_range;
+        const hasMinMax = 
+          (b.service_min_price && b.service_max_price) || 
+          (b.min_price && b.max_price) || 
+          (res.data.service_min_price && res.data.service_max_price) ||
+          (res.data.min_price && res.data.max_price);
+
+        if (!hasDirectRange && !hasMinMax) {
+          try {
+            const sRes = await axios.post(`${BASE_URL}/clients/home/services.php`);
+            if (sRes.data?.success && Array.isArray(sRes.data.services)) {
+              const match = sRes.data.services.find((s: any) =>
+                (b.service_id && String(s.id) === String(b.service_id)) ||
+                (b.service_name && s.name && s.name.toLowerCase().trim() === b.service_name.toLowerCase().trim()) ||
+                (b.title && s.name && s.name.toLowerCase().trim() === b.title.toLowerCase().trim())
+              );
+              if (match && match.min_price && match.max_price) {
+                setServicePriceRange(`€${match.min_price} - €${match.max_price}`);
+              }
+            }
+          } catch (e) {
+            console.warn("Could not fetch services for price range fallback:", e);
+          }
+        }
       } else {
         Alert.alert("Error", res.data?.msg || "Could not fetch job details");
       }
@@ -296,7 +329,8 @@ export default function TechJobDetails() {
       pathname: "/tech-job/adjust-price",
       params: { 
         assignment_id: assignmentId, 
-        base_price: details?.booking?.booking_charges
+        base_price: details?.booking?.booking_charges,
+        price_range: getPriceRange() || ""
       }
     });
   };
@@ -371,6 +405,77 @@ export default function TechJobDetails() {
 
   const statusStyle = getStatusStyle(booking.status);
 
+  const getPriceRange = () => {
+    // 1. Direct price_range string
+    const directRange =
+      booking?.price_range ||
+      booking?.service_price_range ||
+      booking?.priceRange ||
+      booking?.range ||
+      details?.price_range ||
+      details?.service_price_range;
+
+    if (directRange && typeof directRange === "string" && directRange.trim()) {
+      const trimmed = directRange.trim();
+      if (trimmed.startsWith("€")) return trimmed;
+      if (trimmed.includes("-")) {
+        const parts = trimmed.split("-").map(p => p.trim().replace(/^€/, ""));
+        return `€${parts[0]} - €${parts[1]}`;
+      }
+      return `€${trimmed}`;
+    }
+
+    // 2. Min and max fields
+    const min =
+      booking?.service_min_price ??
+      booking?.min_price ??
+      booking?.price_min ??
+      booking?.service_min ??
+      details?.service_min_price ??
+      details?.min_price ??
+      details?.price_min ??
+      booking?.service?.min_price ??
+      details?.service?.min_price;
+
+    const max =
+      booking?.service_max_price ??
+      booking?.max_price ??
+      booking?.price_max ??
+      booking?.service_max ??
+      details?.service_max_price ??
+      details?.max_price ??
+      details?.price_max ??
+      booking?.service?.max_price ??
+      details?.service?.max_price;
+
+    if (
+      min !== undefined &&
+      min !== null &&
+      max !== undefined &&
+      max !== null &&
+      String(min).trim() !== "" &&
+      String(max).trim() !== ""
+    ) {
+      const cleanMin = String(min).replace("€", "").trim();
+      const cleanMax = String(max).replace("€", "").trim();
+      return `€${cleanMin} - €${cleanMax}`;
+    }
+
+    if (min !== undefined && min !== null && String(min).trim() !== "") {
+      const cleanMin = String(min).replace("€", "").trim();
+      return `From €${cleanMin}`;
+    }
+
+    // 3. Fallback from service lookup
+    if (servicePriceRange) {
+      return servicePriceRange;
+    }
+
+    return null;
+  };
+
+  const priceRange = getPriceRange();
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -396,10 +501,14 @@ export default function TechJobDetails() {
 
           <Text style={styles.serviceTitle}>{booking.service_name || booking.title || "Service Request"}</Text>
 
-          {booking.booking_charges ? (
+          {priceRange ? (
+            <Text style={styles.priceText}>Price Range: {priceRange}</Text>
+          ) : booking.booking_charges ? (
             <Text style={styles.priceText}>Base Quote: €{booking.booking_charges}</Text>
           ) : null}
-          {myTechRecord?.amount_paid && String(myTechRecord.amount_paid) !== String(booking.booking_charges) ? (
+          {myTechRecord?.amount_paid &&
+          parseFloat(myTechRecord.amount_paid) > 0 &&
+          Number(booking.status) >= 7 ? (
             <Text style={[styles.priceText, { color: '#059669', fontSize: 16, marginTop: 4 }]}>
               Final Quote Submitted: €{myTechRecord.amount_paid}
             </Text>

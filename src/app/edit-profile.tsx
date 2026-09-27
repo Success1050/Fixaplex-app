@@ -23,6 +23,12 @@ export default function EditProfile() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (userData?.address !== undefined) {
+      setAddress(userData.address || "");
+    }
+  }, [userData?.address]);
+
   const getImageUrl = (url: string) => {
     if (!url) return '';
     return url.startsWith('http') ? url : `${IMAGE_BASE_URL}/${url}`;

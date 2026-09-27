@@ -885,7 +885,13 @@ export default function BookingDetails() {
 
           <Text style={styles.serviceTitle}>{booking.service_name || booking.title || "Service Request"}</Text>
 
-          {booking.booking_charges ? (
+          {booking.price_range ? (
+            <Text style={styles.priceText}>Price Range: {String(booking.price_range).startsWith('€') ? booking.price_range : `€${booking.price_range}`}</Text>
+          ) : (booking.service_min_price && booking.service_max_price) ? (
+            <Text style={styles.priceText}>Price Range: €{booking.service_min_price} - €{booking.service_max_price}</Text>
+          ) : (booking.min_price && booking.max_price) ? (
+            <Text style={styles.priceText}>Price Range: €{booking.min_price} - €{booking.max_price}</Text>
+          ) : booking.booking_charges ? (
             <Text style={styles.priceText}>Base Charges: €{booking.booking_charges}</Text>
           ) : null}
 
