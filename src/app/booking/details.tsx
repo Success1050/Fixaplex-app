@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -22,11 +22,28 @@ export default function Details() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const serviceId = useBookingStore((state) => state.serviceId);
   const issueDescription = useBookingStore((state) => state.issueDescription);
   const setIssueDescription = useBookingStore((state) => state.setIssueDescription);
   const images = useBookingStore((state) => state.images);
   const addImage = useBookingStore((state) => state.addImage);
   const removeImage = useBookingStore((state) => state.removeImage);
+
+  // Validate service selection immediately at beginning of booking flow
+  useEffect(() => {
+    if (!serviceId || serviceId === "0" || serviceId.trim() === "") {
+      Alert.alert(
+        "Service Selection Required",
+        "Please select a service before continuing with your booking.",
+        [
+          {
+            text: "Select Service",
+            onPress: () => router.replace("/(tabs)" as any),
+          },
+        ]
+      );
+    }
+  }, [serviceId]);
 
   const isFormValid = issueDescription.trim().length > 0 && images.length >= 3;
 
@@ -67,6 +84,14 @@ export default function Details() {
   };
 
   const handleNext = () => {
+    if (!serviceId || serviceId === "0" || serviceId.trim() === "") {
+      Alert.alert(
+        "Service Selection Required",
+        "Please select a service before proceeding with your booking.",
+        [{ text: "Select Service", onPress: () => router.replace("/(tabs)" as any) }]
+      );
+      return;
+    }
     if (issueDescription.trim().length === 0) {
       Alert.alert("Required Field", "Please describe the problem.");
       return;

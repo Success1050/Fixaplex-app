@@ -46,6 +46,59 @@ export default function Feedback() {
   const [loading, setLoading] = useState(false);
   const [fetchingJobs, setFetchingJobs] = useState(false);
   const [completedJobs, setCompletedJobs] = useState<any[]>([]);
+  const [existingFeedback, setExistingFeedback] = useState<any | null>(null);
+  const [checkingExisting, setCheckingExisting] = useState(false);
+
+  // Check if feedback was already submitted for this booking
+  useEffect(() => {
+    if (!bookingId) {
+      setExistingFeedback(null);
+      return;
+    }
+
+    const checkFeedbackStatus = async () => {
+      try {
+        setCheckingExisting(true);
+        // 1. Check local device record
+        const storedKey = `feedback_submitted_${bookingId}`;
+        const stored = await SecureStore.getItemAsync(storedKey);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            setExistingFeedback(parsed);
+            if (parsed.rating) setRating(Number(parsed.rating));
+            if (parsed.comments || parsed.comment) setComments(parsed.comments || parsed.comment);
+            return;
+          } catch (e) {}
+        }
+
+        // 2. Check server booking details
+        const token = await SecureStore.getItemAsync("userToken");
+        if (token) {
+          const formData = new FormData();
+          formData.append("booking_id", String(bookingId));
+          const res = await axios.post(`${BASE_URL}/clients/jobs/get_booking_details.php`, formData, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+
+          const serverFb = res.data?.feedback || res.data?.booking?.feedback;
+          if (serverFb && (serverFb.rating || (Array.isArray(serverFb) && serverFb.length > 0))) {
+            const fbObj = Array.isArray(serverFb) ? serverFb[0] : serverFb;
+            setExistingFeedback(fbObj);
+            if (fbObj.rating) setRating(Number(fbObj.rating));
+            if (fbObj.comments || fbObj.comment) setComments(fbObj.comments || fbObj.comment);
+            await SecureStore.setItemAsync(storedKey, JSON.stringify(fbObj));
+          }
+        }
+      } catch (err) {
+        console.warn("Could not check feedback status:", err);
+      } finally {
+        setCheckingExisting(false);
+      }
+    };
+
+    checkFeedbackStatus();
+  }, [bookingId]);
 
   // If booking_id is not passed, fetch user's completed jobs (status 4)
   useEffect(() => {
@@ -91,6 +144,14 @@ export default function Feedback() {
   }, [bookingId]);
 
   const handleSubmit = async () => {
+    if (existingFeedback) {
+      Alert.alert(
+        "Feedback Already Recorded",
+        "You have already submitted feedback for this completed job. Feedback can only be submitted once per job."
+      );
+      return;
+    }
+
     if (!bookingId) {
       Alert.alert(
         "Booking Required",
@@ -137,6 +198,19 @@ export default function Feedback() {
       console.log("[save_feedback] Response:", res.data);
 
       if (res.data?.success) {
+        const recordedFeedback = {
+          rating,
+          comments: comments.trim(),
+          submitted_at: new Date().toISOString()
+        };
+        setExistingFeedback(recordedFeedback);
+        try {
+          await SecureStore.setItemAsync(
+            `feedback_submitted_${bookingId}`,
+            JSON.stringify(recordedFeedback)
+          );
+        } catch (e) {}
+
         Alert.alert(
           "Feedback Submitted",
           res.data.msg ||
@@ -195,7 +269,33 @@ export default function Feedback() {
             </Text>
           </View>
 
+          {/* If checking feedback status */}
+          {checkingExisting && (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator size="small" color="#0d9488" />
+              <Text style={styles.loadingText}>Checking feedback record...</Text>
+            </View>
+          )}
 
+          {/* Already Submitted Record Card (Issue 5 - Single feedback enforcement) */}
+          {existingFeedback && !checkingExisting && (
+            <View style={styles.alreadySubmittedCard}>
+              <View style={styles.alreadySubmittedHeader}>
+                <Ionicons name="checkmark-circle" size={26} color="#059669" />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.alreadySubmittedTitle}>Feedback Already Submitted</Text>
+                  <Text style={styles.alreadySubmittedSubtitle}>
+                    You have already reviewed this service. To maintain verified service ratings, feedback can only be submitted once per job.
+                  </Text>
+                </View>
+              </View>
+              {existingFeedback.submitted_at ? (
+                <Text style={styles.alreadySubmittedDate}>
+                  Recorded: {new Date(existingFeedback.submitted_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                </Text>
+              ) : null}
+            </View>
+          )}
 
           {/* If booking not provided & fetching */}
           {fetchingJobs && (
@@ -250,7 +350,12 @@ export default function Feedback() {
 
           <View style={styles.ratingContainer}>
             {[1, 2, 3, 4, 5].map((star) => (
-              <TouchableOpacity key={star} onPress={() => setRating(star)} style={styles.starButton}>
+              <TouchableOpacity
+                key={star}
+                onPress={() => !existingFeedback && setRating(star)}
+                disabled={Boolean(existingFeedback)}
+                style={styles.starButton}
+              >
                 <Ionicons
                   name={star <= rating ? "star" : "star-outline"}
                   size={42}
@@ -260,16 +365,22 @@ export default function Feedback() {
             ))}
           </View>
 
-          <Text style={styles.label}>Comments & Review (optional):</Text>
+          <Text style={styles.label}>
+            {existingFeedback ? "Your Submitted Comments:" : "Comments & Review (optional):"}
+          </Text>
           <TextInput
-            style={styles.textInput}
-            placeholder="Tell us what went well, or what could be improved..."
+            style={[
+              styles.textInput,
+              existingFeedback && styles.textInputDisabled,
+            ]}
+            placeholder={existingFeedback ? "No additional comments provided." : "Tell us what went well, or what could be improved..."}
             placeholderTextColor="#9ca3af"
             multiline
             numberOfLines={5}
             textAlignVertical="top"
             value={comments}
             onChangeText={setComments}
+            editable={!existingFeedback}
             onFocus={() => {
               setTimeout(() => {
                 scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -279,21 +390,30 @@ export default function Feedback() {
 
           {/* Submit button directly inside ScrollView below the textarea */}
           <View style={styles.submitContainer}>
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                (rating === 0 || loading || (!bookingId && completedJobs.length === 0)) &&
-                  styles.submitButtonDisabled,
-              ]}
-              disabled={rating === 0 || loading || (!bookingId && completedJobs.length === 0)}
-              onPress={handleSubmit}
-            >
-              {loading ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <Text style={styles.submitButtonText}>Submit Feedback</Text>
-              )}
-            </TouchableOpacity>
+            {existingFeedback ? (
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: "#0d9488" }]}
+                onPress={() => router.back()}
+              >
+                <Text style={styles.submitButtonText}>Feedback Recorded • Done</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[
+                  styles.submitButton,
+                  (rating === 0 || loading || (!bookingId && completedJobs.length === 0)) &&
+                    styles.submitButtonDisabled,
+                ]}
+                disabled={rating === 0 || loading || (!bookingId && completedJobs.length === 0)}
+                onPress={handleSubmit}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.submitButtonText}>Submit Feedback</Text>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -459,5 +579,41 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: "Lato-Bold",
     color: "#ffffff",
+  },
+  textInputDisabled: {
+    backgroundColor: "#f3f4f6",
+    color: "#4b5563",
+    borderColor: "#e5e7eb",
+  },
+  alreadySubmittedCard: {
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1.5,
+    borderColor: "#a7f3d0",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+  },
+  alreadySubmittedHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  alreadySubmittedTitle: {
+    fontSize: 15,
+    fontFamily: "Lato-Bold",
+    color: "#065f46",
+    marginBottom: 4,
+  },
+  alreadySubmittedSubtitle: {
+    fontSize: 12,
+    fontFamily: "Lato",
+    color: "#047857",
+    lineHeight: 17,
+  },
+  alreadySubmittedDate: {
+    fontSize: 11,
+    fontFamily: "Lato-Bold",
+    color: "#059669",
+    marginTop: 10,
+    textAlign: "right",
   },
 });

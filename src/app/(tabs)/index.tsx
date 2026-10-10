@@ -814,20 +814,37 @@ export default function Dashboard() {
           style={styles.describeCard}
           activeOpacity={0.85}
           onPress={() => {
-            resetBooking();
-            setServiceId("0");
-            setCategoryInfo("0", "General Request");
-            router.push("/booking/details" as any);
+            Alert.alert(
+              "Select Closest Service",
+              "Service selection is required. Please choose the category or closest service for your issue, and you can provide specific details in the next step.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Browse Categories",
+                  onPress: () => {
+                    const firstCat = services && services.length > 0 ? services[0] : null;
+                    if (firstCat) {
+                      router.push({
+                        pathname: "/category/[id]",
+                        params: { id: firstCat.id, name: firstCat.name }
+                      });
+                    } else {
+                      router.push("/category/1" as any);
+                    }
+                  }
+                }
+              ]
+            );
           }}
         >
           <View style={styles.describeTextContainer}>
             <Text style={styles.describeTitle}>Not sure which service you need?</Text>
             <Text style={styles.describeSubtitle}>
-              Tell us what is happening and we'll help match you with the appropriate technician
+              Browse our service categories to find the best match, then add your custom photos and description
             </Text>
           </View>
           <View style={styles.describeButton}>
-            <Ionicons name="pencil" size={20} color="#ffffff" />
+            <Ionicons name="list" size={20} color="#ffffff" />
           </View>
         </TouchableOpacity>
       </ScrollView>

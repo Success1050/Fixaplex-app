@@ -9,6 +9,7 @@ import {
   Image,
   Modal,
   Platform,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -21,6 +22,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStripe, initStripe } from "@stripe/stripe-react-native";
 import { BASE_URL, IMAGE_BASE_URL, STRIPE_PUBLISHABLE_KEY } from "../../config/api";
+import { getServicePriceRange } from "../../utils/serviceCatalog";
 
 export default function BookingDetails() {
   const router = useRouter();
@@ -29,6 +31,7 @@ export default function BookingDetails() {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [details, setDetails] = useState<any>(null);
   const [statusCard, setStatusCard] = useState<any>(null);
 
@@ -43,6 +46,8 @@ export default function BookingDetails() {
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | number | null>(null);
   const [priceDecisions, setPriceDecisions] = useState<Record<string, 'accept' | 'decline'>>({});
   const [additionalQuoteDecisions, setAdditionalQuoteDecisions] = useState<Record<string, 'accept' | 'decline'>>({});
+  const [declinedAddQuoteInfo, setDeclinedAddQuoteInfo] = useState<any | null>(null);
+  const [hasFeedbackSubmitted, setHasFeedbackSubmitted] = useState(false);
 
   const fetchBookingDetails = async () => {
     try {
@@ -104,10 +109,36 @@ export default function BookingDetails() {
         try {
           const storedPrice = await SecureStore.getItemAsync(`quote_decisions_${id}`);
           if (storedPrice) {
-            Object.assign(serverPriceDecisions, JSON.parse(storedPrice));
+            const parsed = JSON.parse(storedPrice);
+            const verified: Record<string, 'accept' | 'decline'> = {};
+            for (const [key, val] of Object.entries(parsed)) {
+              const matchedTech = detailsRes.data.assignedTechs?.find((t: any) => String(t.id) === key);
+              if (matchedTech) {
+                // If stored decision was structured with amount or if price changed
+                if (typeof val === 'object' && val !== null) {
+                  const item = val as any;
+                  if (!item.amount || String(item.amount) === String(matchedTech.amount_paid)) {
+                    verified[key] = item.decision;
+                  }
+                } else if (typeof val === 'string') {
+                  verified[key] = val as 'accept' | 'decline';
+                }
+              }
+            }
+            Object.assign(serverPriceDecisions, verified);
           }
         } catch (e) {}
-        setPriceDecisions(prev => ({ ...serverPriceDecisions, ...prev }));
+        setPriceDecisions(serverPriceDecisions);
+
+        // Check for completed feedback status
+        try {
+          const storedFeedback = await SecureStore.getItemAsync(`feedback_submitted_${id}`);
+          if (storedFeedback || detailsRes.data?.feedback || detailsRes.data?.booking?.has_feedback) {
+            setHasFeedbackSubmitted(true);
+          } else {
+            setHasFeedbackSubmitted(false);
+          }
+        } catch (e) {}
 
         try {
           const storedAdd = await SecureStore.getItemAsync(`add_quote_decisions_${id}`);
@@ -115,6 +146,35 @@ export default function BookingDetails() {
             setAdditionalQuoteDecisions(prev => ({ ...JSON.parse(storedAdd), ...prev }));
           }
         } catch (e) {}
+
+        // Populate declined additional quote record for history/record purposes (Issue 4)
+        try {
+          const storedDeclined = await SecureStore.getItemAsync(`declined_add_quote_${id}`);
+          if (storedDeclined) {
+            setDeclinedAddQuoteInfo(JSON.parse(storedDeclined));
+          }
+        } catch (e) {}
+
+        const serverDeclined = 
+          detailsRes.data?.declined_additional_quote || 
+          detailsRes.data?.declined_quote ||
+          (Array.isArray(detailsRes.data?.additional_quotes) 
+            ? detailsRes.data.additional_quotes.find((q: any) => String(q.status) === '2' || String(q.status).toLowerCase() === 'declined' || String(q.status).toLowerCase() === 'rejected') 
+            : null) ||
+          (detailsRes.data?.additional_quote && 
+           (String(detailsRes.data.additional_quote.status) === '2' || String(detailsRes.data.additional_quote.status).toLowerCase() === 'declined' || String(detailsRes.data.additional_quote.status).toLowerCase() === 'rejected') 
+            ? detailsRes.data.additional_quote 
+            : null);
+
+        if (serverDeclined) {
+          setDeclinedAddQuoteInfo({
+            quote_id: serverDeclined.quote_id || serverDeclined.id,
+            amount: serverDeclined.amount || serverDeclined.quote_amount,
+            reason: serverDeclined.reason || serverDeclined.description || serverDeclined.quote_reason,
+            decline_reason: serverDeclined.decline_reason || serverDeclined.client_decline_reason || "",
+            declined_at: serverDeclined.declined_at || serverDeclined.updated_at
+          });
+        }
       } else {
         Alert.alert("Error", detailsRes.data?.msg || "Could not fetch booking details");
       }
@@ -138,6 +198,17 @@ export default function BookingDetails() {
       Alert.alert("Error", "A network error occurred.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await fetchBookingDetails();
+    } catch (err) {
+      console.warn("Pull to refresh error:", err);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -326,7 +397,14 @@ export default function BookingDetails() {
           const updated = { ...priceDecisions, [String(assignmentId)]: decision };
           setPriceDecisions(updated);
           try {
-            await SecureStore.setItemAsync(`quote_decisions_${id}`, JSON.stringify(updated));
+            const currentTech = details?.assignedTechs?.find((t: any) => String(t.id) === String(assignmentId));
+            const storedVal = {
+              [String(assignmentId)]: {
+                decision,
+                amount: currentTech?.amount_paid || currentTech?.quote_amount || ""
+              }
+            };
+            await SecureStore.setItemAsync(`quote_decisions_${id}`, JSON.stringify(storedVal));
           } catch (e) {}
         }
 
@@ -380,8 +458,17 @@ export default function BookingDetails() {
       if (decision === 'decline') {
         const updated = { ...additionalQuoteDecisions, [String(quoteId)]: 'decline' as const };
         setAdditionalQuoteDecisions(updated);
+        const declinedRecord = {
+          quote_id: quoteId,
+          amount: resolvedQuoteAmount || "0",
+          reason: resolvedQuoteReason || "",
+          decline_reason: reason || "",
+          declined_at: new Date().toISOString()
+        };
+        setDeclinedAddQuoteInfo(declinedRecord);
         try {
           await SecureStore.setItemAsync(`add_quote_decisions_${id}`, JSON.stringify(updated));
+          await SecureStore.setItemAsync(`declined_add_quote_${id}`, JSON.stringify(declinedRecord));
         } catch (e) {}
 
         Alert.alert(
@@ -669,13 +756,18 @@ export default function BookingDetails() {
       return;
     }
 
+    const isAtOrAfterArrived = currentStatus >= 6;
+    const initialPrompt = isAtOrAfterArrived
+      ? "Your technician has already arrived on-site.\n\nCancelling now means:\n• Refund amount is €0.00\n• The technician's call-out fee will be deducted from your authorized deposit\n• The job will immediately cancel without needing a quote."
+      : "Are you sure you want to cancel this booking? Cancellation and refund terms apply.";
+
     Alert.alert(
       "Cancel Booking?",
-      "Are you sure you want to cancel this booking? Cancellation and refund terms apply.",
+      initialPrompt,
       [
         { text: "Keep Booking", style: "cancel" },
         {
-          text: "Check Refund & Cancel",
+          text: isAtOrAfterArrived ? "Proceed to Cancel" : "Check Refund & Cancel",
           style: "destructive",
           onPress: async () => {
             try {
@@ -696,17 +788,26 @@ export default function BookingDetails() {
               const sym = curr.toUpperCase() === "EUR" ? "€" : curr.toUpperCase() === "GBP" ? "£" : "$";
 
               let refundNotice = "";
-              if (refundAmt !== undefined) {
-                refundNotice += `Estimated Refund: ${sym}${Number(refundAmt).toFixed(2)}${refundPct ? ` (${refundPct})` : ""}.\n`;
-              }
-              if (c?.amount_retained && Number(c.amount_retained) > 0) {
-                refundNotice += `Cancellation fee retained: ${sym}${Number(c.amount_retained).toFixed(2)}.\n`;
+              if (isAtOrAfterArrived) {
+                refundNotice += `Technician On-Site: Refund amount is €0.00.\nThe technician's call-out fee will be retained from the initial pre-authorized amount.\n`;
+                if (c?.amount_retained && Number(c.amount_retained) > 0) {
+                  refundNotice += `Call-out fee retained: ${sym}${Number(c.amount_retained).toFixed(2)}.\n`;
+                }
+              } else {
+                if (refundAmt !== undefined) {
+                  refundNotice += `Estimated Refund: ${sym}${Number(refundAmt).toFixed(2)}${refundPct ? ` (${refundPct})` : ""}.\n`;
+                }
+                if (c?.amount_retained && Number(c.amount_retained) > 0) {
+                  refundNotice += `Cancellation fee retained: ${sym}${Number(c.amount_retained).toFixed(2)}.\n`;
+                }
               }
               if (previewRes.data?.msg) {
                 refundNotice += `${previewRes.data.msg}\n`;
               }
               if (!refundNotice) {
-                refundNotice = "Cancellation terms apply.";
+                refundNotice = isAtOrAfterArrived
+                  ? "Refund: €0.00. Technician call-out fee applies."
+                  : "Cancellation terms apply.";
               }
 
               Alert.alert(
@@ -813,16 +914,36 @@ export default function BookingDetails() {
   const isRefunded =
     String(booking.payment_status).toLowerCase() === 'refunded';
 
-  const activeQuote = statusCard?.quote || 
-    details?.quote || 
+  // Additional quote resolution - ONLY from legitimate additional quote sources (NOT inspection price quotes!)
+  const rawAdditionalQuote = 
     details?.additional_quote || 
-    (Array.isArray(details?.additional_quotes) ? details?.additional_quotes[0] : null) ||
-    (Array.isArray(details?.quotes) ? details?.quotes[0] : null) ||
-    (quote_id ? { quote_id: quote_id, amount: quote_amount, reason: quote_reason } : null);
+    (Array.isArray(details?.additional_quotes) && details.additional_quotes.length > 0 ? details.additional_quotes[0] : null) ||
+    (details?.quote?.type === 'additional' ? details.quote : null) ||
+    (statusCard?.stage === 'additional_quote_review' && (statusCard?.additional_quote || statusCard?.quote)) ||
+    ((statusCard?.stage === 'additional_quote_review' && quote_id) ? { quote_id, amount: quote_amount, reason: quote_reason } : null);
 
-  const resolvedQuoteId = activeQuote?.quote_id || activeQuote?.id || quote_id;
-  const resolvedQuoteAmount = activeQuote?.amount || activeQuote?.quote_amount || quote_amount;
-  const resolvedQuoteReason = activeQuote?.reason || activeQuote?.quote_reason || quote_reason;
+  const addQuoteStatus = String(rawAdditionalQuote?.status || '').toLowerCase();
+  const isAddQuotePending = Boolean(
+    rawAdditionalQuote && (
+      addQuoteStatus === 'pending' || 
+      addQuoteStatus === '0' || 
+      rawAdditionalQuote.status === 0 || 
+      !rawAdditionalQuote.status
+    )
+  );
+
+  const isAddQuoteDeclined = Boolean(
+    rawAdditionalQuote && (
+      addQuoteStatus === 'declined' || 
+      addQuoteStatus === 'rejected' || 
+      addQuoteStatus === '2' || 
+      rawAdditionalQuote.status === 2
+    )
+  );
+
+  const resolvedQuoteId = rawAdditionalQuote?.quote_id || rawAdditionalQuote?.id || (statusCard?.stage === 'additional_quote_review' ? quote_id : null);
+  const resolvedQuoteAmount = rawAdditionalQuote?.amount || rawAdditionalQuote?.quote_amount || (statusCard?.stage === 'additional_quote_review' ? quote_amount : null);
+  const resolvedQuoteReason = rawAdditionalQuote?.reason || rawAdditionalQuote?.description || rawAdditionalQuote?.quote_reason || (statusCard?.stage === 'additional_quote_review' ? quote_reason : null);
 
   const renderTimeline = (currentStatus: number) => {
     const s = Number(currentStatus);
@@ -863,7 +984,13 @@ export default function BookingDetails() {
           <Ionicons name="chevron-back" size={24} color="#1f2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Booking Details</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity style={styles.backButton} onPress={onRefresh} disabled={refreshing}>
+          {refreshing ? (
+            <ActivityIndicator size="small" color="#1A6B6B" />
+          ) : (
+            <Ionicons name="refresh" size={20} color="#1A6B6B" />
+          )}
+        </TouchableOpacity>
       </View>
 
       <ScrollView 
@@ -872,6 +999,14 @@ export default function BookingDetails() {
           { paddingBottom: Math.max(insets.bottom + 24, Platform.OS === 'android' ? 36 : 24) }
         ]} 
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={["#1A6B6B"]}
+            tintColor="#1A6B6B"
+          />
+        }
       >
 
         {/* Main Info Card */}
@@ -885,14 +1020,24 @@ export default function BookingDetails() {
 
           <Text style={styles.serviceTitle}>{booking.service_name || booking.title || "Service Request"}</Text>
 
-          {booking.price_range ? (
+          {Number(booking.status) === 7 ? (
+            <Text style={styles.priceText}>
+              Final Quote: €{assignedTechs?.[0]?.amount_paid || booking.booking_charges}
+            </Text>
+          ) : (Number(booking.status) === 3 || Number(booking.status) === 8 || Number(booking.status) === 4) && (assignedTechs?.[0]?.amount_paid || booking.booking_charges) ? (
+            <Text style={styles.priceText}>
+              Final Quote: €{assignedTechs?.[0]?.amount_paid || booking.booking_charges}
+            </Text>
+          ) : booking.price_range ? (
             <Text style={styles.priceText}>Price Range: {String(booking.price_range).startsWith('€') ? booking.price_range : `€${booking.price_range}`}</Text>
           ) : (booking.service_min_price && booking.service_max_price) ? (
             <Text style={styles.priceText}>Price Range: €{booking.service_min_price} - €{booking.service_max_price}</Text>
           ) : (booking.min_price && booking.max_price) ? (
             <Text style={styles.priceText}>Price Range: €{booking.min_price} - €{booking.max_price}</Text>
+          ) : getServicePriceRange(booking.service_id, booking.service_name || booking.title, booking.booking_code) ? (
+            <Text style={styles.priceText}>Price Range: {getServicePriceRange(booking.service_id, booking.service_name || booking.title, booking.booking_code)}</Text>
           ) : booking.booking_charges ? (
-            <Text style={styles.priceText}>Base Charges: €{booking.booking_charges}</Text>
+            <Text style={styles.priceText}>Price Range: €{booking.booking_charges}</Text>
           ) : null}
 
           <View style={styles.divider} />
@@ -1104,8 +1249,8 @@ export default function BookingDetails() {
           </View>
         )}
 
-        {/* Status 3 / Additional Quote Review Section (Images 1 & 2) */}
-        {(Number(booking.status) === 3 || statusCard?.stage === 'additional_quote_review') && (resolvedQuoteId || resolvedQuoteAmount) && (
+        {/* Additional Quote Review Section (Appears ONLY when technician logs an actual additional quote - Issue 3) */}
+        {Boolean(rawAdditionalQuote && (isAddQuotePending || additionalQuoteDecisions[String(resolvedQuoteId || 1)] === 'accept')) && (
           <View style={styles.additionalQuoteCard}>
             <View style={styles.additionalQuoteHeader}>
               <View style={[styles.completionIconBadge, { backgroundColor: '#fef3c7' }]}>
@@ -1145,16 +1290,6 @@ export default function BookingDetails() {
                   You have accepted this additional quote. The technician will proceed with this work.
                 </Text>
               </View>
-            ) : additionalQuoteDecisions[String(resolvedQuoteId || 1)] === 'decline' ? (
-              <View style={styles.decisionStatusBoxDeclined}>
-                <View style={styles.decisionStatusHeader}>
-                  <Ionicons name="close-circle" size={20} color="#dc2626" />
-                  <Text style={styles.decisionStatusDeclinedText}>Additional Quote Declined</Text>
-                </View>
-                <Text style={styles.decisionStatusSubtext}>
-                  You declined this additional work. The technician will continue with only the originally agreed scope.
-                </Text>
-              </View>
             ) : (
               <View style={styles.actionRow}>
                 <TouchableOpacity
@@ -1177,6 +1312,52 @@ export default function BookingDetails() {
                 </TouchableOpacity>
               </View>
             )}
+          </View>
+        )}
+
+        {/* Declined Additional Work Section (For Record Purposes - Issue 4) */}
+        {Boolean(declinedAddQuoteInfo || isAddQuoteDeclined || additionalQuoteDecisions[String(resolvedQuoteId || 1)] === 'decline') && (
+          <View style={styles.declinedRecordCard}>
+            <View style={styles.declinedRecordHeader}>
+              <View style={styles.declinedIconBadge}>
+                <Ionicons name="close-circle" size={22} color="#dc2626" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.declinedBadge}>
+                  <Text style={styles.declinedBadgeText}>ADDITIONAL WORK DECLINED</Text>
+                </View>
+                <Text style={styles.declinedCardTitle}>Additional Quote Record</Text>
+              </View>
+            </View>
+
+            <View style={styles.additionalQuotePriceRow}>
+              <Text style={styles.additionalQuotePriceLabel}>Extra Amount Declined:</Text>
+              <Text style={[styles.additionalQuotePriceValue, { color: '#dc2626' }]}>
+                €{declinedAddQuoteInfo?.amount || resolvedQuoteAmount || "0"}
+              </Text>
+            </View>
+
+            {(declinedAddQuoteInfo?.reason || resolvedQuoteReason) ? (
+              <View style={styles.additionalQuoteReasonBox}>
+                <Text style={styles.additionalQuoteReasonLabel}>Technician's Explanation:</Text>
+                <Text style={styles.additionalQuoteReasonText}>
+                  {declinedAddQuoteInfo?.reason || resolvedQuoteReason}
+                </Text>
+              </View>
+            ) : null}
+
+            {declinedAddQuoteInfo?.decline_reason ? (
+              <View style={[styles.additionalQuoteReasonBox, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+                <Text style={[styles.additionalQuoteReasonLabel, { color: '#991b1b' }]}>Your Reason for Declining:</Text>
+                <Text style={[styles.additionalQuoteReasonText, { color: '#7f1d1d' }]}>
+                  {declinedAddQuoteInfo.decline_reason}
+                </Text>
+              </View>
+            ) : null}
+
+            <Text style={styles.declinedRecordFooterNotice}>
+              <Ionicons name="information-circle-outline" size={14} color="#6b7280" /> Record Notice: You declined this additional work quote. Your technician continues with only the originally agreed scope.
+            </Text>
           </View>
         )}
 
@@ -1216,15 +1397,37 @@ export default function BookingDetails() {
                       </Text>
                     </View>
                   ) : techDecision === 'decline' ? (
-                    <View style={styles.decisionStatusBoxDeclined}>
-                      <View style={styles.decisionStatusHeader}>
-                        <Ionicons name="close-circle" size={20} color="#dc2626" />
-                        <Text style={styles.decisionStatusDeclinedText}>Quote Declined</Text>
+                    <>
+                      <View style={styles.decisionStatusBoxDeclined}>
+                        <View style={styles.decisionStatusHeader}>
+                          <Ionicons name="close-circle" size={20} color="#dc2626" />
+                          <Text style={styles.decisionStatusDeclinedText}>Quote Declined</Text>
+                        </View>
+                        <Text style={styles.decisionStatusSubtext}>
+                          You declined a previous quote. Your technician has submitted the quote above (€{tech.amount_paid}). You can accept this final amount below or submit a revised decline.
+                        </Text>
                       </View>
-                      <Text style={styles.decisionStatusSubtext}>
-                        You have declined this quote. Your technician has been notified to discuss and submit a revised quote.
-                      </Text>
-                    </View>
+                      <View style={styles.actionRow}>
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.declineBtn, actionLoading && styles.btnDisabled]}
+                          onPress={() => promptDecline('price', tech.id)}
+                          disabled={actionLoading}
+                        >
+                          <Text style={styles.declineBtnText}>Decline Quote</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.acceptBtn, actionLoading && styles.btnDisabled]}
+                          onPress={() => handleConfirm('price', 'accept', tech.id)}
+                          disabled={actionLoading}
+                        >
+                          {actionLoading ? (
+                            <ActivityIndicator color="#fff" size="small" />
+                          ) : (
+                            <Text style={styles.acceptBtnText}>Accept Quote (€{tech.amount_paid})</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </>
                   ) : (
                     <View style={styles.actionRow}>
                       <TouchableOpacity
@@ -1405,12 +1608,20 @@ export default function BookingDetails() {
                       });
                     }}
                   >
-                    <View style={[styles.supportIconWrapper, { backgroundColor: "#dbeafe" }]}>
-                      <Ionicons name="star-outline" size={24} color="#3b82f6" />
+                    <View style={[styles.supportIconWrapper, { backgroundColor: (hasFeedbackSubmitted || details?.feedback || details?.booking?.has_feedback) ? "#d1fae5" : "#dbeafe" }]}>
+                      <Ionicons
+                        name={(hasFeedbackSubmitted || details?.feedback || details?.booking?.has_feedback) ? "checkmark-circle" : "star-outline"}
+                        size={24}
+                        color={(hasFeedbackSubmitted || details?.feedback || details?.booking?.has_feedback) ? "#059669" : "#3b82f6"}
+                      />
                     </View>
                     <View style={styles.supportTextWrapper}>
-                      <Text style={styles.supportActionTitle}>Leave Feedback</Text>
-                      <Text style={styles.supportActionSubtitle}>Rate your experience</Text>
+                      <Text style={styles.supportActionTitle}>
+                        {(hasFeedbackSubmitted || details?.feedback || details?.booking?.has_feedback) ? "Feedback Submitted" : "Leave Feedback"}
+                      </Text>
+                      <Text style={styles.supportActionSubtitle}>
+                        {(hasFeedbackSubmitted || details?.feedback || details?.booking?.has_feedback) ? "Rating recorded for this job" : "Rate your experience"}
+                      </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
                   </TouchableOpacity>
@@ -1420,8 +1631,8 @@ export default function BookingDetails() {
           </View>
         )}
 
-        {/* Cancel Booking option for active, non-completed bookings (PDF 2 §40) */}
-        {Number(booking.status) >= 0 && Number(booking.status) <= 2 && (
+        {/* Cancel Booking option for active, non-completed bookings */}
+        {!isCancelled && !isCompleted && !isRefunded && Number(booking.status) !== 4 && Number(booking.status) !== 8 && Number(booking.status) !== -1 && (
           <View style={styles.cancelBookingSection}>
             <TouchableOpacity
               style={styles.cancelBookingBtn}
@@ -1430,7 +1641,11 @@ export default function BookingDetails() {
             >
               <Text style={styles.cancelBookingBtnText}>Cancel Booking</Text>
             </TouchableOpacity>
-            <Text style={styles.cancelBookingHint}>Cancellation and refund terms apply.</Text>
+            <Text style={styles.cancelBookingHint}>
+              {Number(booking.status) >= 6
+                ? "Technician on-site: €0 refund and call-out fee apply upon cancellation."
+                : "Cancellation and refund terms apply."}
+            </Text>
           </View>
         )}
 
@@ -2303,5 +2518,58 @@ const styles = StyleSheet.create({
     fontFamily: "Lato",
     color: "#4b5563",
     lineHeight: 19,
+  },
+  declinedRecordCard: {
+    backgroundColor: "#fff8f8",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#fecaca",
+    padding: 18,
+    marginBottom: 20,
+    shadowColor: "#dc2626",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  declinedRecordHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 12,
+  },
+  declinedIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#fee2e2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  declinedBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#fee2e2",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  declinedBadgeText: {
+    fontSize: 11,
+    fontFamily: "Lato-Bold",
+    color: "#b91c1c",
+    letterSpacing: 0.5,
+  },
+  declinedCardTitle: {
+    fontSize: 17,
+    fontFamily: "Lato-Bold",
+    color: "#991b1b",
+  },
+  declinedRecordFooterNotice: {
+    fontSize: 12,
+    fontFamily: "Lato",
+    color: "#991b1b",
+    lineHeight: 18,
+    marginTop: 8,
   },
 });

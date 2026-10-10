@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, ActivityIndicator, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, ActivityIndicator, Platform, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -44,8 +44,24 @@ export default function CategoryServicesScreen() {
         console.log(`[CategoryServices category=${id}] Response:`, JSON.stringify(res.data, null, 2).slice(0, 500));
         
         setData(res.data);
-        // Keep all dropdown sections closed initially by default
-        setExpandedSections({});
+        
+        // Auto-expand first section so services are immediately visible and selectable
+        let firstId: string | null = null;
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          firstId = String(res.data[0].id);
+        } else if (res.data?.categories && res.data.categories.length > 0) {
+          firstId = String(res.data.categories[0].id);
+        } else if (res.data?.sub_categories && res.data.sub_categories.length > 0) {
+          firstId = String(res.data.sub_categories[0].id);
+        } else if (res.data?.data && Array.isArray(res.data.data) && res.data.data.length > 0) {
+          firstId = String(res.data.data[0].id);
+        }
+        if (firstId) {
+          setExpandedSections({ [firstId]: true });
+          setInitialExpandedId(firstId);
+        } else {
+          setExpandedSections({});
+        }
       } catch (err) {
         console.error("Failed to fetch category services:", err);
       } finally {
@@ -65,7 +81,10 @@ export default function CategoryServicesScreen() {
 
   const handleNext = () => {
     if (!selectedServiceId) {
-      alert("Please select a service.");
+      Alert.alert(
+        "Service Selection Required",
+        "Please select a service from the options below before proceeding."
+      );
       return;
     }
     
@@ -99,6 +118,27 @@ export default function CategoryServicesScreen() {
       </View>
 
       <ScrollView ref={scrollViewRef} contentContainerStyle={styles.container}>
+        {/* Prominent Mandatory Service Selection Notice at the beginning of the Category page */}
+        <View style={styles.mandatoryNoticeBanner}>
+          <View style={styles.mandatoryNoticeRow}>
+            <Ionicons name="alert-circle" size={20} color="#1A6B6B" />
+            <Text style={styles.mandatoryNoticeTitle}>
+              Service Selection Required <Text style={styles.requiredAsterisk}>*</Text>
+            </Text>
+          </View>
+          <Text style={styles.mandatoryNoticeSubtitle}>
+            Please select one service from the categories below before proceeding with your booking.
+          </Text>
+          {selectedServiceName ? (
+            <View style={styles.selectedServiceBadge}>
+              <Ionicons name="checkmark-circle" size={16} color="#059669" />
+              <Text style={styles.selectedServiceText}>
+                Selected: <Text style={{ fontFamily: "Lato-Bold" }}>{selectedServiceName}</Text>
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
         {loading ? (
           <ActivityIndicator size="large" color="#1A6B6B" style={{ marginTop: 40 }} />
         ) : sectionsToRender.length > 0 ? (
@@ -186,7 +226,7 @@ export default function CategoryServicesScreen() {
         <TouchableOpacity 
           style={[styles.nextButton, selectedServiceId ? styles.nextButtonActive : styles.nextButtonDisabled]} 
           onPress={handleNext}
-          disabled={!selectedServiceId}
+          activeOpacity={0.8}
         >
           <Text style={styles.nextButtonText}>Next</Text>
         </TouchableOpacity>
@@ -222,6 +262,53 @@ const styles = StyleSheet.create({
   container: {
     padding: 24,
     paddingBottom: 40,
+  },
+  mandatoryNoticeBanner: {
+    backgroundColor: "#f0fdfa",
+    borderWidth: 1.5,
+    borderColor: "#99f6e4",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+  },
+  mandatoryNoticeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  mandatoryNoticeTitle: {
+    fontSize: 15,
+    fontFamily: "Lato-Bold",
+    color: "#0f766e",
+    marginLeft: 8,
+  },
+  requiredAsterisk: {
+    color: "#ef4444",
+    fontSize: 16,
+  },
+  mandatoryNoticeSubtitle: {
+    fontSize: 13,
+    fontFamily: "Lato",
+    color: "#134e48",
+    lineHeight: 18,
+  },
+  selectedServiceBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ecfdf5",
+    borderWidth: 1,
+    borderColor: "#a7f3d0",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 10,
+    alignSelf: "flex-start",
+  },
+  selectedServiceText: {
+    fontSize: 13,
+    fontFamily: "Lato",
+    color: "#065f46",
+    marginLeft: 6,
   },
   accordionCard: {
     borderWidth: 1,
