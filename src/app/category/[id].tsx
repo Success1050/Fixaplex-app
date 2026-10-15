@@ -29,6 +29,8 @@ export default function CategoryServicesScreen() {
   const resetBooking = useBookingStore(state => state.reset);
   const setCategoryInfo = useBookingStore(state => state.setCategoryInfo);
   const setPriceEstimate = useBookingStore(state => state.setPriceEstimate);
+  const setCharges = useBookingStore(state => state.setCharges);
+  const [pricingCharge, setPricingCharge] = useState<string | number>(25);
 
   useEffect(() => {
     const fetchCategoryServices = async () => {
@@ -44,6 +46,9 @@ export default function CategoryServicesScreen() {
         console.log(`[CategoryServices category=${id}] Response:`, JSON.stringify(res.data, null, 2).slice(0, 500));
         
         setData(res.data);
+        const extractedCharge = res.data?.pricing?.booking_charge ?? res.data?.pricing?.charges ?? res.data?.booking_charges ?? res.data?.charges ?? 25;
+        setPricingCharge(extractedCharge);
+        setCharges(extractedCharge);
         
         // Auto-expand first section so services are immediately visible and selectable
         let firstId: string | null = null;
@@ -91,7 +96,8 @@ export default function CategoryServicesScreen() {
     resetBooking();
     setServiceId(selectedServiceId);
     setCategoryInfo(id as string, selectedServiceName || name as string);
-    setPriceEstimate(selectedMinPrice, selectedMaxPrice);
+    setPriceEstimate(selectedMinPrice, selectedMaxPrice, pricingCharge);
+    setCharges(pricingCharge);
     router.push("/booking/details");
   };
 

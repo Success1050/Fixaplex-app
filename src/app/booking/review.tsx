@@ -161,7 +161,7 @@ export default function Review() {
         ]}
       >
         <TouchableOpacity style={styles.submitButton} onPress={handleContinue}>
-          <Text style={styles.submitButtonText}>Continue</Text>
+          <Text style={styles.submitButtonText}>Review & Secure Booking</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

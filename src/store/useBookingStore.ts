@@ -23,6 +23,7 @@ interface BookingState {
   guestEmail: string;
   minPrice?: string;
   maxPrice?: string;
+  charges?: string | number;
   activeBookingId?: string | number | null;
   rawBookingDate?: string;
   savedAddress?: {
@@ -46,7 +47,8 @@ interface BookingState {
   }) => void;
   setServiceId: (id: string) => void;
   setCategoryInfo: (id: string, name: string) => void;
-  setPriceEstimate: (min: string, max: string) => void;
+  setPriceEstimate: (min: string, max: string, charges?: string | number) => void;
+  setCharges: (charges: string | number) => void;
   setSelectedServices: (services: string[]) => void;
   setFullAddress: (addressLine1: string, addressLine2: string, addressLine3: string, town: string, county: string, postcode: string) => void;
   setTiming: (type: 'ASAP' | 'Tomorrow' | 'Future', date?: string, time?: string) => void;
@@ -80,6 +82,7 @@ export const useBookingStore = create<BookingState>((set) => ({
   guestEmail: '',
   minPrice: '',
   maxPrice: '',
+  charges: '25.00',
   activeBookingId: null,
   rawBookingDate: '',
   savedAddress: null,
@@ -89,7 +92,12 @@ export const useBookingStore = create<BookingState>((set) => ({
   setSavedAddress: (address) => set({ savedAddress: address }),
   setServiceId: (id) => set({ serviceId: id }),
   setCategoryInfo: (id, name) => set({ categoryId: id, categoryName: name }),
-  setPriceEstimate: (min, max) => set({ minPrice: min, maxPrice: max }),
+  setPriceEstimate: (min, max, charges) => set((state) => ({ 
+    minPrice: min, 
+    maxPrice: max, 
+    charges: charges !== undefined ? charges : state.charges || '25.00' 
+  })),
+  setCharges: (charges) => set({ charges }),
   setSelectedServices: (services) => set({ selectedServices: services }),
   setFullAddress: (addressLine1, addressLine2, addressLine3, town, county, postcode) => set({ 
     addressLine1, addressLine2, addressLine3, town, county, postcode,
@@ -118,6 +126,7 @@ export const useBookingStore = create<BookingState>((set) => ({
     timingType: 'ASAP',
     selectedDate: '', selectedTime: '', issueDescription: '', images: [],
     guestName: '', guestPhone: '', guestEmail: '', minPrice: '', maxPrice: '',
+    charges: '25.00',
     activeBookingId: null, rawBookingDate: '',
     savedAddress: state.savedAddress || {
       addressLine1: state.addressLine1,

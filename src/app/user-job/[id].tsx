@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStripe, initStripe } from "@stripe/stripe-react-native";
 import { BASE_URL, IMAGE_BASE_URL, STRIPE_PUBLISHABLE_KEY } from "../../config/api";
 import { getServicePriceRange } from "../../utils/serviceCatalog";
+import { useBookingStore } from "../../store/useBookingStore";
 
 export default function BookingDetails() {
   const router = useRouter();
@@ -48,6 +49,7 @@ export default function BookingDetails() {
   const [additionalQuoteDecisions, setAdditionalQuoteDecisions] = useState<Record<string, 'accept' | 'decline'>>({});
   const [declinedAddQuoteInfo, setDeclinedAddQuoteInfo] = useState<any | null>(null);
   const [hasFeedbackSubmitted, setHasFeedbackSubmitted] = useState(false);
+  const [isLocallyMarkedPaid, setIsLocallyMarkedPaid] = useState(false);
 
   const fetchBookingDetails = async () => {
     try {
@@ -94,10 +96,42 @@ export default function BookingDetails() {
       if (detailsRes.data && detailsRes.data.success) {
         setDetails(detailsRes.data);
 
+        // Check if this booking was marked deposit paid in SecureStore or useBookingStore
+        try {
+          const cleanCode = (c: string) => String(c || '').trim().toUpperCase().replace(/\s+/g, '');
+          const serverCode = cleanCode(detailsRes.data?.booking?.booking_code);
+          const localPaid = await SecureStore.getItemAsync(`deposit_paid_${resolvedBookingId}`);
+          const localCodePaid = serverCode ? await SecureStore.getItemAsync(`deposit_paid_${serverCode}`) : null;
+          const localIdPaid = id ? await SecureStore.getItemAsync(`deposit_paid_${id}`) : null;
+          const submittedJobs = useBookingStore.getState().submittedJobs || [];
+          const storePaid = submittedJobs.some((j: any) =>
+            String(j.id) === String(resolvedBookingId) ||
+            String(j.id) === String(id) ||
+            (j.bookingCode && serverCode && cleanCode(j.bookingCode) === serverCode)
+          );
+          if (localPaid === 'true' || localCodePaid === 'true' || localIdPaid === 'true' || storePaid) {
+            setIsLocallyMarkedPaid(true);
+          }
+        } catch (e) {}
+
         // Populate decisions from server or local SecureStore
         const serverPriceDecisions: Record<string, 'accept' | 'decline'> = {};
         if (Array.isArray(detailsRes.data.assignedTechs)) {
           detailsRes.data.assignedTechs.forEach((t: any) => {
+            const isPendingOnServer = 
+              String(t.price_status) === '0' || 
+              String(t.quote_status) === '0' ||
+              String(t.price_status).toLowerCase() === 'pending' ||
+              String(t.quote_status).toLowerCase() === 'pending' ||
+              t.is_revision == 1 ||
+              t.revised == 1 ||
+              t.is_revised == 1;
+
+            if (isPendingOnServer) {
+              // Quote is awaiting client approval - don't mark as accepted
+              return;
+            }
+
             const dec = t.price_decision || 
               (String(t.price_status) === '1' || String(t.price_status) === 'accepted' ? 'accept' : 
                String(t.price_status) === '2' || String(t.price_status) === 'declined' ? 'decline' : null) ||
@@ -114,14 +148,26 @@ export default function BookingDetails() {
             for (const [key, val] of Object.entries(parsed)) {
               const matchedTech = detailsRes.data.assignedTechs?.find((t: any) => String(t.id) === key);
               if (matchedTech) {
+                const isPendingOnServer = 
+                  String(matchedTech.price_status) === '0' || 
+                  String(matchedTech.quote_status) === '0' ||
+                  String(matchedTech.price_status).toLowerCase() === 'pending' ||
+                  String(matchedTech.quote_status).toLowerCase() === 'pending' ||
+                  matchedTech.is_revision == 1 ||
+                  matchedTech.revised == 1 ||
+                  matchedTech.is_revised == 1;
+
+                // If technician revised or quote is pending on server, previous decision is invalidated
+                if (isPendingOnServer) {
+                  continue;
+                }
+
                 // If stored decision was structured with amount or if price changed
                 if (typeof val === 'object' && val !== null) {
                   const item = val as any;
-                  if (!item.amount || String(item.amount) === String(matchedTech.amount_paid)) {
+                  if (item.amount && String(item.amount) === String(matchedTech.amount_paid)) {
                     verified[key] = item.decision;
                   }
-                } else if (typeof val === 'string') {
-                  verified[key] = val as 'accept' | 'decline';
                 }
               }
             }
@@ -322,6 +368,16 @@ export default function BookingDetails() {
         return;
       }
 
+      const cleanCode = (c: string) => String(c || '').trim().toUpperCase().replace(/\s+/g, '');
+      const bId = details?.booking?.booking_id || details?.booking?.id || id;
+      if (bId) {
+        await SecureStore.setItemAsync(`deposit_paid_${bId}`, 'true').catch(() => {});
+      }
+      if (details?.booking?.booking_code) {
+        await SecureStore.setItemAsync(`deposit_paid_${cleanCode(details.booking.booking_code)}`, 'true').catch(() => {});
+      }
+      setIsLocallyMarkedPaid(true);
+
       Alert.alert(
         "Payment Successful",
         "Your deposit payment has been confirmed! We will now find a technician for your booking.",
@@ -342,6 +398,11 @@ export default function BookingDetails() {
       const token = await SecureStore.getItemAsync('userToken');
       const formData = new FormData();
       formData.append('assignment_id', assignmentId);
+      const bId = details?.booking?.booking_id || details?.booking?.id || id;
+      if (bId) {
+        formData.append('booking_id', String(bId));
+        formData.append('id', String(bId));
+      }
       formData.append('decision', decision);
       if (reason) formData.append('reason', reason);
       if (type === 'price') {
@@ -436,6 +497,11 @@ export default function BookingDetails() {
 
       const formData = new FormData();
       formData.append('quote_id', String(quoteId));
+      const bId = details?.booking?.booking_id || details?.booking?.id || id;
+      if (bId) {
+        formData.append('booking_id', String(bId));
+        formData.append('id', String(bId));
+      }
       formData.append('decision', decision);
       if (reason) formData.append('reason', reason);
       formData.append('stripe_version', '2020-08-27');
@@ -748,10 +814,10 @@ export default function BookingDetails() {
 
   const handleCancelBooking = () => {
     const currentStatus = Number(details?.booking?.status);
-    if (currentStatus === 8 || currentStatus === 4) {
+    if (currentStatus === 3 || currentStatus === 8 || currentStatus === 4 || String(details?.booking?.status).toLowerCase() === 'in progress') {
       Alert.alert(
         "Cannot Cancel",
-        "This job cannot be cancelled because the technician has already completed the work. If you have an issue, please raise a dispute or contact support."
+        "This job cannot be cancelled because the technician has already started or completed the work. If you have an issue, please raise a dispute or contact support."
       );
       return;
     }
@@ -914,13 +980,76 @@ export default function BookingDetails() {
   const isRefunded =
     String(booking.payment_status).toLowerCase() === 'refunded';
 
-  // Additional quote resolution - ONLY from legitimate additional quote sources (NOT inspection price quotes!)
+  const isWorkInProgress =
+    Number(booking.status) === 3 ||
+    String(booking.status).toLowerCase() === 'in progress' ||
+    statusStyle.label.toLowerCase() === 'in progress';
+
+  const isAtOrAfterWorkInProgress =
+    isWorkInProgress ||
+    Number(booking.status) === 8 ||
+    Number(booking.status) === 4 ||
+    isCompleted;
+
+  const pStatus = String(booking.payment_status || '').toLowerCase().trim();
+
+  // Check if server or local record indicates deposit is paid
+  const isServerDepositPaid =
+    pStatus === 'deposit_paid' ||
+    pStatus === 'paid' ||
+    pStatus === '1' ||
+    pStatus === 'deposit_authorized' ||
+    pStatus === 'deposit_hold' ||
+    pStatus === 'deposit_success' ||
+    pStatus === 'deposit' ||
+    pStatus === 'authorized' ||
+    pStatus === 'completed' ||
+    pStatus === 'succeeded' ||
+    pStatus === 'hold' ||
+    pStatus === 'partial' ||
+    (pStatus.includes('deposit') && !pStatus.includes('unpaid') && !pStatus.includes('pending')) ||
+    booking.deposit_paid === 1 ||
+    booking.deposit_paid === '1' ||
+    booking.deposit_paid === true ||
+    booking.deposit_status === 'paid' ||
+    booking.deposit_status === '1' ||
+    booking.is_paid === 1 ||
+    booking.is_paid === '1';
+
+  // In Fixaplex business logic, technician matching (Status 1+) only happens after deposit is finalized
+  const isMatchedOrBeyond = Number(booking.status) >= 1 && Number(booking.status) !== -1;
+
+  const isDepositPaid = isServerDepositPaid || isLocallyMarkedPaid || isMatchedOrBeyond;
+
+  // Deposit payment is pending ONLY IF not paid, not cancelled/completed/refunded, in pre-match stage,
+  // and server/statusCard explicitly indicates payment is required/unpaid
+  const isPaymentPending =
+    !isDepositPaid &&
+    !isCancelled &&
+    !isCompleted &&
+    !isRefunded &&
+    (Number(booking.status) === 0 || !booking.status) &&
+    (
+      pStatus === 'unpaid' ||
+      pStatus === '0' ||
+      pStatus === 'pending' ||
+      details?.payment?.required === true ||
+      statusCard?.payment?.required === true ||
+      statusCard?.stage === 'payment' ||
+      statusCard?.stage === 'deposit' ||
+      statusCard?.action === 'payment' ||
+      statusCard?.title?.toLowerCase().includes('payment') ||
+      statusCard?.message?.toLowerCase().includes('pay the booking')
+    );
+
+  // Additional quote resolution
   const rawAdditionalQuote = 
     details?.additional_quote || 
     (Array.isArray(details?.additional_quotes) && details.additional_quotes.length > 0 ? details.additional_quotes[0] : null) ||
     (details?.quote?.type === 'additional' ? details.quote : null) ||
+    (Number(booking?.status) === 3 && details?.quote ? details.quote : null) ||
     (statusCard?.stage === 'additional_quote_review' && (statusCard?.additional_quote || statusCard?.quote)) ||
-    ((statusCard?.stage === 'additional_quote_review' && quote_id) ? { quote_id, amount: quote_amount, reason: quote_reason } : null);
+    (quote_id ? { quote_id, amount: quote_amount, reason: quote_reason } : null);
 
   const addQuoteStatus = String(rawAdditionalQuote?.status || '').toLowerCase();
   const isAddQuotePending = Boolean(
@@ -928,7 +1057,9 @@ export default function BookingDetails() {
       addQuoteStatus === 'pending' || 
       addQuoteStatus === '0' || 
       rawAdditionalQuote.status === 0 || 
-      !rawAdditionalQuote.status
+      !rawAdditionalQuote.status ||
+      rawAdditionalQuote.is_revision == 1 ||
+      rawAdditionalQuote.revised == 1
     )
   );
 
@@ -941,9 +1072,47 @@ export default function BookingDetails() {
     )
   );
 
-  const resolvedQuoteId = rawAdditionalQuote?.quote_id || rawAdditionalQuote?.id || (statusCard?.stage === 'additional_quote_review' ? quote_id : null);
-  const resolvedQuoteAmount = rawAdditionalQuote?.amount || rawAdditionalQuote?.quote_amount || (statusCard?.stage === 'additional_quote_review' ? quote_amount : null);
-  const resolvedQuoteReason = rawAdditionalQuote?.reason || rawAdditionalQuote?.description || rawAdditionalQuote?.quote_reason || (statusCard?.stage === 'additional_quote_review' ? quote_reason : null);
+  const resolvedQuoteId = rawAdditionalQuote?.quote_id || rawAdditionalQuote?.id || (quote_id ? quote_id : null);
+  const resolvedQuoteAmount = rawAdditionalQuote?.amount || rawAdditionalQuote?.quote_amount || (quote_amount ? quote_amount : null);
+  const resolvedQuoteReason = rawAdditionalQuote?.reason || rawAdditionalQuote?.description || rawAdditionalQuote?.quote_reason || (quote_reason ? quote_reason : null);
+
+  // Effective technicians / final quote candidates
+  const effectiveTechs = (Array.isArray(assignedTechs) && assignedTechs.length > 0)
+    ? assignedTechs
+    : details?.assignedTech
+    ? [details.assignedTech]
+    : details?.technician
+    ? [details.technician]
+    : details?.tech
+    ? [details.tech]
+    : (details?.quote && details?.quote?.type !== 'additional' && Number(booking.status) !== 3)
+    ? [{
+        id: details.quote.assignment_id || details.quote.id || booking?.booking_technician_id || booking?.id,
+        assignment_id: details.quote.assignment_id || details.quote.id || booking?.booking_technician_id || booking?.id,
+        amount_paid: details.quote.amount || details.quote.quote_amount || booking?.booking_charges,
+        reason: details.quote.reason || details.quote.description,
+        price_status: details.quote.status !== undefined ? details.quote.status : '0',
+        quote_status: details.quote.status !== undefined ? details.quote.status : '0',
+      }]
+    : [];
+
+  // Check if a final/inspection quote is available for review
+  const hasFinalQuoteToReview = Boolean(
+    (Number(booking.status) === 7 ||
+     statusStyle.label.toLowerCase() === 'price review' ||
+     statusCard?.stage === 'quote_review' ||
+     statusCard?.stage === 'price_review' ||
+     (Number(booking.status) === 6 && (
+       effectiveTechs.some((t: any) => t.amount_paid && parseFloat(t.amount_paid) > 0) ||
+       Boolean(details?.quote && details?.quote?.type !== 'additional')
+     )) ||
+     effectiveTechs.some((t: any) => 
+       t.amount_paid && parseFloat(t.amount_paid) > 0 && 
+       (String(t.price_status) === '0' || String(t.quote_status) === '0' || t.is_revision == 1 || t.revised == 1) &&
+       Number(booking.status) !== 3 && Number(booking.status) !== 4 && Number(booking.status) !== 8
+     )
+    ) && effectiveTechs.length > 0
+  );
 
   const renderTimeline = (currentStatus: number) => {
     const s = Number(currentStatus);
@@ -1091,9 +1260,7 @@ export default function BookingDetails() {
         )}
 
         {/* Payment Pending Banner (PDF 2 §16) */}
-        {!isCancelled && !isCompleted && !isRefunded && (Number(booking.status) === 0 || Number(booking.status) === 1 || !booking.status) && (
-          ((booking.payment_status && String(booking.payment_status) !== '1' && String(booking.payment_status).toLowerCase() !== 'paid') || booking.is_paid === 0 || booking.is_paid === '0')
-        ) && (
+        {isPaymentPending && (
           <View style={styles.paymentPendingBanner}>
             <Ionicons name="alert-circle" size={22} color="#b45309" />
             <View style={{ flex: 1 }}>
@@ -1119,8 +1286,8 @@ export default function BookingDetails() {
           </View>
         )}
 
-        {/* Technician Arrived Notification Banner (Status 6, PDF 2 §24) */}
-        {Number(booking.status) === 6 && (
+        {/* Technician Arrived Notification Banner (Status 6) */}
+        {Number(booking.status) === 6 && !hasFinalQuoteToReview && (
           <View style={styles.arrivedBanner}>
             <View style={styles.arrivedHeaderRow}>
               <Ionicons name="checkmark-done-circle" size={26} color="#15803d" />
@@ -1132,9 +1299,9 @@ export default function BookingDetails() {
           </View>
         )}
 
-        {/* Status 7: Quote Review / Quote Accepted Banner (Image 1) */}
-        {Number(booking.status) === 7 && (
-          Object.values(priceDecisions).some(d => d === 'accept') ? (
+        {/* Status 7 or Pending Final Quote: Quote Review / Quote Accepted Banner */}
+        {(Number(booking.status) === 7 || hasFinalQuoteToReview) && (
+          (Object.values(priceDecisions).some(d => d === 'accept') && !effectiveTechs.some((t: any) => String(t.price_status) === '0' || String(t.quote_status) === '0' || t.is_revision == 1 || t.revised == 1)) ? (
             <View style={[styles.arrivedBanner, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
               <View style={styles.arrivedHeaderRow}>
                 <Ionicons name="checkmark-circle" size={26} color="#15803d" />
@@ -1151,7 +1318,7 @@ export default function BookingDetails() {
                 <Text style={[styles.arrivedTitle, { color: '#b45309' }]}>Inspection & Quote Review</Text>
               </View>
               <Text style={[styles.arrivedText, { color: '#78350f' }]}>
-                Technician has arrived and inspecting the job. You can Accept/Decline the final quote.
+                Technician has arrived and submitted a final quote. You can Accept or Decline the quote below.
               </Text>
             </View>
           )
@@ -1280,7 +1447,7 @@ export default function BookingDetails() {
               <Ionicons name="information-circle-outline" size={14} color="#b45309" /> If accepted, this extra amount is held on your card and will be captured together with the balance at final completion sign-off. If declined, the technician continues the main job only.
             </Text>
 
-            {additionalQuoteDecisions[String(resolvedQuoteId || 1)] === 'accept' ? (
+            {additionalQuoteDecisions[String(resolvedQuoteId || 1)] === 'accept' && !isAddQuotePending ? (
               <View style={styles.decisionStatusBoxAccepted}>
                 <View style={styles.decisionStatusHeader}>
                   <Ionicons name="checkmark-circle" size={20} color="#15803d" />
@@ -1361,42 +1528,57 @@ export default function BookingDetails() {
           </View>
         )}
 
-        {/* Final Quote Review Section (Status 7 - Image 1) */}
-        {Number(booking.status) === 7 && assignedTechs && assignedTechs.length > 0 && (
+        {/* Final Quote Review Section (Status 7 / Price Review Phase) */}
+        {hasFinalQuoteToReview && effectiveTechs && effectiveTechs.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Final Quote Review</Text>
-            {assignedTechs.map((tech: any, index: number) => {
-              const techDecision = priceDecisions[String(tech.id)] || 
-                (String(tech.price_decision) === 'accept' ? 'accept' : String(tech.price_decision) === 'decline' ? 'decline' : null) ||
-                (String(tech.price_status) === '1' || String(tech.price_status) === 'accepted' ? 'accept' : 
-                 String(tech.price_status) === '2' || String(tech.price_status) === 'declined' ? 'decline' : null) ||
-                (String(tech.quote_status) === '1' || String(tech.quote_status) === 'accepted' ? 'accept' : 
-                 String(tech.quote_status) === '2' || String(tech.quote_status) === 'declined' ? 'decline' : null);
+            {effectiveTechs.map((tech: any, index: number) => {
+              const techAssignmentId = tech.id || tech.assignment_id || booking?.booking_technician_id || booking?.id;
+              const isQuotePending = 
+                String(tech.price_status) === '0' || 
+                String(tech.quote_status) === '0' ||
+                String(tech.price_status).toLowerCase() === 'pending' ||
+                String(tech.quote_status).toLowerCase() === 'pending' ||
+                tech.is_revision == 1 ||
+                tech.revised == 1 ||
+                tech.is_revised == 1;
+
+              const techDecision = isQuotePending
+                ? (priceDecisions[String(techAssignmentId)] || null)
+                : (priceDecisions[String(techAssignmentId)] || 
+                  (String(tech.price_decision) === 'accept' ? 'accept' : String(tech.price_decision) === 'decline' ? 'decline' : null) ||
+                  (String(tech.price_status) === '1' || String(tech.price_status) === 'accepted' ? 'accept' : 
+                   String(tech.price_status) === '2' || String(tech.price_status) === 'declined' ? 'decline' : null) ||
+                  (String(tech.quote_status) === '1' || String(tech.quote_status) === 'accepted' ? 'accept' : 
+                   String(tech.quote_status) === '2' || String(tech.quote_status) === 'declined' ? 'decline' : null));
+
+              const quoteAmount = tech.amount_paid || tech.quote_amount || details?.quote?.amount || booking?.booking_charges;
+              const quoteReason = tech.price_reason || tech.reason || details?.quote?.reason || details?.quote?.description;
 
               return (
                 <View key={index} style={styles.priceReviewCard}>
                   <View style={styles.priceReviewHeader}>
                     <Text style={styles.priceReviewTitle}>New Quoted Amount</Text>
-                    <Text style={styles.priceReviewValue}>€{tech.amount_paid}</Text>
+                    <Text style={styles.priceReviewValue}>€{quoteAmount || "0"}</Text>
                   </View>
-                  {tech.price_reason || tech.reason ? (
+                  {quoteReason ? (
                     <View style={styles.priceReasonBox}>
                       <Text style={styles.priceReasonLabel}>Technician's Reason:</Text>
-                      <Text style={styles.priceReasonText}>{tech.price_reason || tech.reason}</Text>
+                      <Text style={styles.priceReasonText}>{quoteReason}</Text>
                     </View>
                   ) : null}
 
-                  {techDecision === 'accept' ? (
+                  {techDecision === 'accept' && !isQuotePending ? (
                     <View style={styles.decisionStatusBoxAccepted}>
                       <View style={styles.decisionStatusHeader}>
                         <Ionicons name="checkmark-circle" size={20} color="#15803d" />
-                        <Text style={styles.decisionStatusAcceptedText}>Quote Accepted (€{tech.amount_paid})</Text>
+                        <Text style={styles.decisionStatusAcceptedText}>Quote Accepted (€{quoteAmount || "0"})</Text>
                       </View>
                       <Text style={styles.decisionStatusSubtext}>
                         You have accepted this final quote. Your technician has been notified to set the job to In Progress and begin work.
                       </Text>
                     </View>
-                  ) : techDecision === 'decline' ? (
+                  ) : techDecision === 'decline' && !isQuotePending ? (
                     <>
                       <View style={styles.decisionStatusBoxDeclined}>
                         <View style={styles.decisionStatusHeader}>
@@ -1404,26 +1586,26 @@ export default function BookingDetails() {
                           <Text style={styles.decisionStatusDeclinedText}>Quote Declined</Text>
                         </View>
                         <Text style={styles.decisionStatusSubtext}>
-                          You declined a previous quote. Your technician has submitted the quote above (€{tech.amount_paid}). You can accept this final amount below or submit a revised decline.
+                          You declined a previous quote. Your technician has submitted the quote above (€{quoteAmount || "0"}). You can accept this final amount below or submit a revised decline.
                         </Text>
                       </View>
                       <View style={styles.actionRow}>
                         <TouchableOpacity
                           style={[styles.actionBtn, styles.declineBtn, actionLoading && styles.btnDisabled]}
-                          onPress={() => promptDecline('price', tech.id)}
+                          onPress={() => promptDecline('price', techAssignmentId)}
                           disabled={actionLoading}
                         >
                           <Text style={styles.declineBtnText}>Decline Quote</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[styles.actionBtn, styles.acceptBtn, actionLoading && styles.btnDisabled]}
-                          onPress={() => handleConfirm('price', 'accept', tech.id)}
+                          onPress={() => handleConfirm('price', 'accept', techAssignmentId)}
                           disabled={actionLoading}
                         >
                           {actionLoading ? (
                             <ActivityIndicator color="#fff" size="small" />
                           ) : (
-                            <Text style={styles.acceptBtnText}>Accept Quote (€{tech.amount_paid})</Text>
+                            <Text style={styles.acceptBtnText}>Accept Quote (€{quoteAmount || "0"})</Text>
                           )}
                         </TouchableOpacity>
                       </View>
@@ -1432,20 +1614,20 @@ export default function BookingDetails() {
                     <View style={styles.actionRow}>
                       <TouchableOpacity
                         style={[styles.actionBtn, styles.declineBtn, actionLoading && styles.btnDisabled]}
-                        onPress={() => promptDecline('price', tech.id)}
+                        onPress={() => promptDecline('price', techAssignmentId)}
                         disabled={actionLoading}
                       >
                         <Text style={styles.declineBtnText}>Decline Quote</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.actionBtn, styles.acceptBtn, actionLoading && styles.btnDisabled]}
-                        onPress={() => handleConfirm('price', 'accept', tech.id)}
+                        onPress={() => handleConfirm('price', 'accept', techAssignmentId)}
                         disabled={actionLoading}
                       >
                         {actionLoading ? (
                           <ActivityIndicator color="#fff" size="small" />
                         ) : (
-                          <Text style={styles.acceptBtnText}>Accept Quote</Text>
+                          <Text style={styles.acceptBtnText}>Accept Quote (€{quoteAmount || "0"})</Text>
                         )}
                       </TouchableOpacity>
                     </View>
@@ -1631,8 +1813,8 @@ export default function BookingDetails() {
           </View>
         )}
 
-        {/* Cancel Booking option for active, non-completed bookings */}
-        {!isCancelled && !isCompleted && !isRefunded && Number(booking.status) !== 4 && Number(booking.status) !== 8 && Number(booking.status) !== -1 && (
+        {/* Cancel Booking option - NOT visible once work is in progress or completed */}
+        {!isCancelled && !isCompleted && !isRefunded && !isAtOrAfterWorkInProgress && Number(booking.status) !== 3 && Number(booking.status) !== 4 && Number(booking.status) !== 8 && Number(booking.status) !== -1 && (
           <View style={styles.cancelBookingSection}>
             <TouchableOpacity
               style={styles.cancelBookingBtn}

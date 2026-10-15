@@ -29,9 +29,10 @@ export default function Details() {
   const addImage = useBookingStore((state) => state.addImage);
   const removeImage = useBookingStore((state) => state.removeImage);
 
-  // Validate service selection immediately at beginning of booking flow
+  // Validate service selection only on initial mount if accessed without selecting a service
   useEffect(() => {
-    if (!serviceId || serviceId === "0" || serviceId.trim() === "") {
+    const currentServiceId = useBookingStore.getState().serviceId;
+    if (!currentServiceId || currentServiceId === "0" || currentServiceId.trim() === "") {
       Alert.alert(
         "Service Selection Required",
         "Please select a service before continuing with your booking.",
@@ -43,7 +44,7 @@ export default function Details() {
         ]
       );
     }
-  }, [serviceId]);
+  }, []);
 
   const isFormValid = issueDescription.trim().length > 0 && images.length >= 3;
 
