@@ -18,6 +18,7 @@ import {
   View
 } from "react-native";
 import { BASE_URL, IMAGE_BASE_URL } from "../../config/api";
+import { getServicePriceRange, CATEGORY_CODE_TO_ID } from "../../utils/serviceCatalog";
 
 export default function TechJobDetails() {
   const router = useRouter();
@@ -42,6 +43,7 @@ export default function TechJobDetails() {
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
   const [withdrawReason, setWithdrawReason] = useState("");
   const [selectedQuoteIdForWithdraw, setSelectedQuoteIdForWithdraw] = useState<number | string | null>(null);
+  const [declinedNotifRecord, setDeclinedNotifRecord] = useState<any | null>(null);
 
   const fetchJobDetails = async () => {
     try {
@@ -80,13 +82,59 @@ export default function TechJobDetails() {
         setDetails(res.data);
         console.log("tech job get_booking_details response:", res.data);
 
+        // Check for declined additional quote notifications (Issue 4)
+        try {
+          const notifRes = await axios.post(`${BASE_URL}/technicians/notifications/get_notifications.php`, {}, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (notifRes.data?.success && Array.isArray(notifRes.data.notifications)) {
+            const bCode = res.data.booking?.booking_code;
+            const matchNotif = notifRes.data.notifications.find((n: any) => {
+              const combined = `${n.title || ''} ${n.message || ''}`.toLowerCase();
+              const isMatch = 
+                (n.booking_id && String(n.booking_id) === String(resolvedBookingId)) ||
+                (bCode && combined.includes(bCode.toLowerCase())) ||
+                combined.includes(String(resolvedBookingId).toLowerCase());
+              const isDeclined = combined.includes("declined") || combined.includes("rejected");
+              const isAdditional = combined.includes("additional") || combined.includes("extra");
+              return isMatch && isDeclined && isAdditional;
+            });
+            if (matchNotif) {
+              const amtMatch = matchNotif.message?.match(/€\s*([\d.]+)/) || matchNotif.message?.match(/EUR\s*([\d.]+)/);
+              setDeclinedNotifRecord({
+                amount: amtMatch ? amtMatch[1] : undefined,
+                reason: matchNotif.title,
+                decline_reason: matchNotif.message,
+                declined_at: matchNotif.date_added || matchNotif.created_at
+              });
+            }
+          }
+        } catch (e) {}
+
         const b = res.data.booking || {};
+        console.log("tech job get_booking_details response:", res.data);
+
+        // Immediate catalog lookup by service name, id, or booking code
+        const catalogRange = getServicePriceRange(
+          b.service_id,
+          b.service_name || b.title,
+          b.booking_code
+        );
+        if (catalogRange) {
+          setServicePriceRange(catalogRange);
+        }
+
         const hasDirectRange = 
           b.price_range || 
           b.service_price_range || 
           b.priceRange || 
+          b.range ||
+          b.price_estimate ||
+          b.estimated_range ||
           res.data.price_range || 
-          res.data.service_price_range;
+          res.data.service_price_range ||
+          res.data.price_estimate;
+
         const hasMinMax = 
           (b.service_min_price && b.service_max_price) || 
           (b.min_price && b.max_price) || 
@@ -95,19 +143,44 @@ export default function TechJobDetails() {
 
         if (!hasDirectRange && !hasMinMax) {
           try {
-            const sRes = await axios.post(`${BASE_URL}/clients/home/services.php`);
-            if (sRes.data?.success && Array.isArray(sRes.data.services)) {
-              const match = sRes.data.services.find((s: any) =>
-                (b.service_id && String(s.id) === String(b.service_id)) ||
-                (b.service_name && s.name && s.name.toLowerCase().trim() === b.service_name.toLowerCase().trim()) ||
-                (b.title && s.name && s.name.toLowerCase().trim() === b.title.toLowerCase().trim())
-              );
-              if (match && match.min_price && match.max_price) {
-                setServicePriceRange(`€${match.min_price} - €${match.max_price}`);
+            // Determine category from booking or code
+            let categoryId = b.category_id;
+            if (!categoryId && b.booking_code) {
+              const codeMatch = String(b.booking_code).match(/FP-([A-Z]{3})/i);
+              if (codeMatch && codeMatch[1]) {
+                categoryId = CATEGORY_CODE_TO_ID[codeMatch[1].toUpperCase()];
+              }
+            }
+
+            const catListToTry = categoryId ? [categoryId] : [4, 1, 2, 3];
+            for (const catId of catListToTry) {
+              const catFormData = new FormData();
+              catFormData.append("category", String(catId));
+              const catRes = await axios.post(`${BASE_URL}/clients/home/category_services.php`, catFormData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+
+              const list = Array.isArray(catRes.data) ? catRes.data : (catRes.data?.categories || catRes.data?.sub_categories || []);
+              let foundMatch: any = null;
+              for (const sub of list) {
+                const sMatch = (sub.services || []).find((s: any) =>
+                  (b.service_id && String(s.id) === String(b.service_id)) ||
+                  (b.service_name && s.name && s.name.toLowerCase().trim() === b.service_name.toLowerCase().trim()) ||
+                  (b.title && s.name && s.name.toLowerCase().trim() === b.title.toLowerCase().trim())
+                );
+                if (sMatch) {
+                  foundMatch = sMatch;
+                  break;
+                }
+              }
+
+              if (foundMatch && foundMatch.min_price && foundMatch.max_price) {
+                setServicePriceRange(`€${foundMatch.min_price} - €${foundMatch.max_price}`);
+                break;
               }
             }
           } catch (e) {
-            console.warn("Could not fetch services for price range fallback:", e);
+            console.warn("Could not fetch category services for price range fallback:", e);
           }
         }
       } else {
@@ -325,12 +398,17 @@ export default function TechJobDetails() {
 
   const handleGoToAdjustPrice = () => {
     const assignmentId = getAssignmentId();
+    const resolvedBookingId = details?.booking?.booking_id || details?.booking?.id || id;
     router.push({
       pathname: "/tech-job/adjust-price",
       params: { 
         assignment_id: assignmentId, 
+        booking_id: resolvedBookingId,
+        current_status: String(details?.booking?.status ?? ""),
         base_price: details?.booking?.booking_charges,
-        price_range: getPriceRange() || ""
+        price_range: getPriceRange() || "",
+        service_name: details?.booking?.service_name || details?.booking?.title || "",
+        service_id: details?.booking?.service_id || ""
       }
     });
   };
@@ -377,6 +455,29 @@ export default function TechJobDetails() {
       activeAddQuote.status === '0'
     )
   );
+
+  const serverDeclinedQuote = 
+    details?.declined_additional_quote || 
+    details?.declined_quote ||
+    (Array.isArray(details?.additional_quotes) 
+      ? details.additional_quotes.find((q: any) => String(q.status) === '2' || String(q.status).toLowerCase() === 'declined' || String(q.status).toLowerCase() === 'rejected') 
+      : null) ||
+    (activeAddQuote && 
+     (String(activeAddQuote.status) === '2' || String(activeAddQuote.status).toLowerCase() === 'declined' || String(activeAddQuote.status).toLowerCase() === 'rejected') 
+      ? activeAddQuote 
+      : null);
+
+  const declinedQuoteRecord = serverDeclinedQuote ? {
+    amount: serverDeclinedQuote.amount || serverDeclinedQuote.quote_amount,
+    reason: serverDeclinedQuote.reason || serverDeclinedQuote.description || serverDeclinedQuote.quote_reason,
+    decline_reason: serverDeclinedQuote.decline_reason || serverDeclinedQuote.client_decline_reason || "Declined by client",
+    declined_at: serverDeclinedQuote.declined_at || serverDeclinedQuote.updated_at
+  } : declinedNotifRecord ? {
+    amount: declinedNotifRecord.amount || activeAddQuote?.amount,
+    reason: activeAddQuote?.reason || activeAddQuote?.description || "Additional work requested",
+    decline_reason: declinedNotifRecord.decline_reason,
+    declined_at: declinedNotifRecord.declined_at
+  } : null;
 
   const getImageUrl = (url: string) => {
     if (!url) return '';
@@ -461,14 +562,28 @@ export default function TechJobDetails() {
       return `€${cleanMin} - €${cleanMax}`;
     }
 
+    // 3. Fallback from service catalog lookup
+    const catalogLookup = getServicePriceRange(
+      booking?.service_id,
+      booking?.service_name || booking?.title,
+      booking?.booking_code
+    );
+    if (catalogLookup) {
+      return catalogLookup;
+    }
+
+    // 4. Fallback from category services fetch
+    if (servicePriceRange) {
+      return servicePriceRange;
+    }
+
     if (min !== undefined && min !== null && String(min).trim() !== "") {
       const cleanMin = String(min).replace("€", "").trim();
       return `From €${cleanMin}`;
     }
 
-    // 3. Fallback from service lookup
-    if (servicePriceRange) {
-      return servicePriceRange;
+    if (booking?.booking_charges) {
+      return `€${booking.booking_charges}`;
     }
 
     return null;
@@ -504,7 +619,7 @@ export default function TechJobDetails() {
           {priceRange ? (
             <Text style={styles.priceText}>Price Range: {priceRange}</Text>
           ) : booking.booking_charges ? (
-            <Text style={styles.priceText}>Base Quote: €{booking.booking_charges}</Text>
+            <Text style={styles.priceText}>Price Range: €{booking.booking_charges}</Text>
           ) : null}
           {myTechRecord?.amount_paid &&
           parseFloat(myTechRecord.amount_paid) > 0 &&
@@ -616,12 +731,12 @@ export default function TechJobDetails() {
         )}
 
         {/* Pending Additional Quote Card (while at status 3) */}
-        {activeAddQuote && (
+        {activeAddQuote && hasPendingAddQuote && (
           <View style={styles.quoteStatusBox}>
             <View style={styles.quoteStatusHeaderRow}>
               <Ionicons name="document-attach-outline" size={22} color="#b45309" />
               <Text style={styles.quoteStatusTitle}>
-                Additional Work Quote ({activeAddQuote.status || "Pending"})
+                Additional Work Quote (Pending Client Approval)
               </Text>
             </View>
             <Text style={styles.quoteDetailText}>
@@ -632,21 +747,58 @@ export default function TechJobDetails() {
                 {activeAddQuote.reason || activeAddQuote.description}
               </Text>
             ) : null}
-            {hasPendingAddQuote && (
-              <View style={{ marginTop: 12, flexDirection: "row", justifyContent: "flex-end" }}>
-                <TouchableOpacity
-                  style={styles.withdrawBtn}
-                  onPress={() => {
-                    setSelectedQuoteIdForWithdraw(activeAddQuote.quote_id || activeAddQuote.id);
-                    setWithdrawModalVisible(true);
-                  }}
-                  disabled={actionLoading}
-                >
-                  <Ionicons name="close-circle-outline" size={16} color="#DC2626" style={{ marginRight: 4 }} />
-                  <Text style={styles.withdrawBtnText}>Withdraw Quote</Text>
-                </TouchableOpacity>
+            <View style={{ marginTop: 12, flexDirection: "row", justifyContent: "flex-end" }}>
+              <TouchableOpacity
+                style={styles.withdrawBtn}
+                onPress={() => {
+                  setSelectedQuoteIdForWithdraw(activeAddQuote.quote_id || activeAddQuote.id);
+                  setWithdrawModalVisible(true);
+                }}
+                disabled={actionLoading}
+              >
+                <Ionicons name="close-circle-outline" size={16} color="#DC2626" style={{ marginRight: 4 }} />
+                <Text style={styles.withdrawBtnText}>Withdraw Quote</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Declined Additional Work Section (For Record Purposes - Issue 4) */}
+        {declinedQuoteRecord && (
+          <View style={styles.declinedRecordBox}>
+            <View style={styles.declinedRecordHeaderRow}>
+              <Ionicons name="close-circle" size={22} color="#DC2626" />
+              <View style={{ flex: 1 }}>
+                <View style={styles.declinedTag}>
+                  <Text style={styles.declinedTagText}>ADDITIONAL WORK DECLINED</Text>
+                </View>
+                <Text style={styles.declinedRecordTitle}>Quote Declined by Client</Text>
               </View>
-            )}
+            </View>
+
+            {declinedQuoteRecord.amount ? (
+              <Text style={styles.declinedDetailText}>
+                Quoted Extra Amount: <Text style={{ fontFamily: "Lato-Bold", color: "#DC2626" }}>€{declinedQuoteRecord.amount}</Text>
+              </Text>
+            ) : null}
+
+            {declinedQuoteRecord.reason ? (
+              <View style={styles.declinedReasonBox}>
+                <Text style={styles.declinedReasonLabel}>Work Described:</Text>
+                <Text style={styles.declinedReasonText}>{declinedQuoteRecord.reason}</Text>
+              </View>
+            ) : null}
+
+            {declinedQuoteRecord.decline_reason ? (
+              <View style={[styles.declinedReasonBox, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+                <Text style={[styles.declinedReasonLabel, { color: '#991B1B' }]}>Client / Record Note:</Text>
+                <Text style={[styles.declinedReasonText, { color: '#7F1D1D' }]}>{declinedQuoteRecord.decline_reason}</Text>
+              </View>
+            ) : null}
+
+            <Text style={styles.declinedNoticeFooter}>
+              <Ionicons name="information-circle-outline" size={13} color="#991B1B" /> The client declined this additional work quote. Please proceed with and complete only the originally agreed scope.
+            </Text>
           </View>
         )}
 
@@ -1371,5 +1523,71 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
     color: '#1f2937',
     marginBottom: 16,
+  },
+  declinedRecordBox: {
+    backgroundColor: '#FFF8F8',
+    borderWidth: 1.5,
+    borderColor: '#FECACA',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+  },
+  declinedRecordHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  declinedTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  declinedTagText: {
+    fontSize: 11,
+    fontFamily: 'Lato-Bold',
+    color: '#B91C1C',
+    letterSpacing: 0.5,
+  },
+  declinedRecordTitle: {
+    fontSize: 16,
+    fontFamily: 'Lato-Bold',
+    color: '#991B1B',
+  },
+  declinedDetailText: {
+    fontSize: 14,
+    fontFamily: 'Lato',
+    color: '#991B1B',
+    marginBottom: 8,
+  },
+  declinedReasonBox: {
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+  },
+  declinedReasonLabel: {
+    fontSize: 12,
+    fontFamily: 'Lato-Bold',
+    color: '#991B1B',
+    marginBottom: 2,
+  },
+  declinedReasonText: {
+    fontSize: 13,
+    fontFamily: 'Lato',
+    color: '#4B5563',
+    lineHeight: 18,
+  },
+  declinedNoticeFooter: {
+    fontSize: 12,
+    fontFamily: 'Lato',
+    color: '#991B1B',
+    lineHeight: 18,
+    marginTop: 4,
   },
 });

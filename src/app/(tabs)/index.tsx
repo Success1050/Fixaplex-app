@@ -329,6 +329,15 @@ export default function Dashboard() {
         return;
       }
 
+      const bId = payingBookingId || job?.booking_id || job?.id;
+      if (bId) {
+        await SecureStore.setItemAsync(`deposit_paid_${bId}`, "true").catch(() => {});
+      }
+      if (job?.booking_code) {
+        const cleanCode = String(job.booking_code).trim().toUpperCase().replace(/\s+/g, "");
+        await SecureStore.setItemAsync(`deposit_paid_${cleanCode}`, "true").catch(() => {});
+      }
+
       Alert.alert(
         "Payment Successful",
         "Your deposit payment has been confirmed! We will now find a technician for your booking.",
@@ -545,15 +554,34 @@ export default function Dashboard() {
                 return null;
               }
 
+              const jobPStatus = String(job.payment_status || "").toLowerCase().trim();
+              const isJobDepositPaid =
+                jobPStatus === "deposit_paid" ||
+                jobPStatus === "paid" ||
+                jobPStatus === "1" ||
+                jobPStatus === "deposit_authorized" ||
+                jobPStatus === "deposit_hold" ||
+                jobPStatus === "deposit_success" ||
+                jobPStatus === "deposit" ||
+                jobPStatus === "authorized" ||
+                jobPStatus === "completed" ||
+                jobPStatus === "succeeded" ||
+                (jobPStatus.includes("deposit") && !jobPStatus.includes("unpaid") && !jobPStatus.includes("pending")) ||
+                job.deposit_paid === 1 ||
+                job.deposit_paid === "1" ||
+                job.is_paid === 1 ||
+                job.is_paid === "1" ||
+                (statusNum >= 1 && statusNum !== -1);
+
               const isPaymentPending =
+                !isJobDepositPaid &&
                 statusNum !== 4 &&
-                String(job.payment_status).toLowerCase() !== "refunded" &&
+                jobPStatus !== "refunded" &&
                 (job.title?.toLowerCase().includes("payment") ||
-                  job.message?.toLowerCase().includes("pay") ||
+                  job.message?.toLowerCase().includes("pay the booking") ||
                   job.payment_status === "unpaid" ||
                   job.payment_status === "0" ||
-                  job.is_paid === 0 ||
-                  job.is_paid === "0" ||
+                  job.payment_status === "pending" ||
                   job.payment?.required ||
                   job.action === "payment" ||
                   job.stage === "payment" ||
@@ -682,8 +710,16 @@ export default function Dashboard() {
                     </TouchableOpacity>
                   </View>
                 );
-              } else if (job.stage === 'additional_quote_review' || (statusNum === 3 && job.quote)) {
-                const quoteAmt = job.quote?.amount;
+              } else if (
+                statusNum === 7 ||
+                job.stage === 'quote_review' ||
+                job.stage === 'price_review' ||
+                job.stage === 'additional_quote_review' ||
+                (statusNum === 3 && job.quote) ||
+                (Boolean(job.quote) && statusNum !== 4 && statusNum !== -1)
+              ) {
+                const isAdditional = job.stage === 'additional_quote_review' || (statusNum === 3 && job.quote);
+                const quoteAmt = job.quote?.amount || job.amount_paid || job.booking_charges;
                 return (
                   <View key={index} style={[styles.quoteBanner, { width: 310, marginRight: 16, marginBottom: 0 }]}>
                     <View style={styles.bannerTagRow}>
@@ -692,13 +728,22 @@ export default function Dashboard() {
                       </View>
                     </View>
                     <Text style={styles.quoteBannerTitle}>
-                      {job.title || "Additional Work Quoted"}
+                      {job.title || (isAdditional ? "Additional Work Quoted" : "New Price Quote")}
                     </Text>
                     {quoteAmt ? (
-                      <Text style={styles.quoteAmountHomeText}>Extra: €{quoteAmt}</Text>
+                      <Text style={styles.quoteAmountHomeText}>
+                        {isAdditional ? `Extra: €${quoteAmt}` : `Quote: €${quoteAmt}`}
+                      </Text>
+                    ) : null}
+                    {techName ? (
+                      <Text style={[styles.searchingBannerSubtitle, { marginBottom: 4, fontFamily: 'Lato-Bold', color: '#92400e' }]}>
+                        Technician: {techName}
+                      </Text>
                     ) : null}
                     <Text style={[styles.quoteBannerSubtitle, { marginBottom: 12 }]}>
-                      {job.message || "Your technician requested approval for additional work."}
+                      {job.message || (isAdditional 
+                        ? "Your technician requested approval for additional work." 
+                        : "Your technician has submitted a quote. Please accept or decline to proceed.")}
                     </Text>
                     <TouchableOpacity
                       style={styles.reviewQuoteHomeBtn}
@@ -707,8 +752,8 @@ export default function Dashboard() {
                         params: {
                           id: job.booking_id || job.id || 1,
                           quote_id: job.quote?.quote_id || job.quote?.id,
-                          quote_amount: job.quote?.amount,
-                          quote_reason: job.quote?.reason,
+                          quote_amount: job.quote?.amount || job.amount_paid,
+                          quote_reason: job.quote?.reason || job.price_reason,
                         }
                       })}
                     >
@@ -814,20 +859,37 @@ export default function Dashboard() {
           style={styles.describeCard}
           activeOpacity={0.85}
           onPress={() => {
-            resetBooking();
-            setServiceId("0");
-            setCategoryInfo("0", "General Request");
-            router.push("/booking/details" as any);
+            Alert.alert(
+              "Select Closest Service",
+              "Service selection is required. Please choose the category or closest service for your issue, and you can provide specific details in the next step.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Browse Categories",
+                  onPress: () => {
+                    const firstCat = services && services.length > 0 ? services[0] : null;
+                    if (firstCat) {
+                      router.push({
+                        pathname: "/category/[id]",
+                        params: { id: firstCat.id, name: firstCat.name }
+                      });
+                    } else {
+                      router.push("/category/1" as any);
+                    }
+                  }
+                }
+              ]
+            );
           }}
         >
           <View style={styles.describeTextContainer}>
             <Text style={styles.describeTitle}>Not sure which service you need?</Text>
             <Text style={styles.describeSubtitle}>
-              Tell us what is happening and we'll help match you with the appropriate technician
+              Browse our service categories to find the best match, then add your custom photos and description
             </Text>
           </View>
           <View style={styles.describeButton}>
-            <Ionicons name="pencil" size={20} color="#ffffff" />
+            <Ionicons name="list" size={20} color="#ffffff" />
           </View>
         </TouchableOpacity>
       </ScrollView>

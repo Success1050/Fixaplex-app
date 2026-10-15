@@ -8,6 +8,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { BASE_URL } from "../config/api";
 import { useAuthStore } from "../store/useAuthStore";
 
+
 export default function TechOnboarding() {
   const router = useRouter();
   const userData = useAuthStore(state => state.userData);
@@ -22,12 +23,13 @@ export default function TechOnboarding() {
 
   const fetchServices = async () => {
     try {
-      const res = await axios.post(`${BASE_URL}/clients/home/services.php`);
-      if (res.data && res.data.success && Array.isArray(res.data.services)) {
-        setServices(res.data.services);
+      setLoadingServices(true);
+      const res = await axios.post(`${BASE_URL}/clients/home/categories.php`);
+      if (res.data && res.data.success) {
+        setServices(res.data.categories || res.data.services || []);
       }
     } catch (err) {
-      console.error("Failed to fetch services:", err);
+      console.error("Failed to fetch categories from categories.php:", err);
     } finally {
       setLoadingServices(false);
     }
@@ -92,9 +94,14 @@ export default function TechOnboarding() {
       selectedServices.forEach((serviceId, index) => {
         formData.append(`services[${index}]`, serviceId);
       });
+      formData.append('services', selectedServices.join(','));
+      selectedServices.forEach((serviceId) => {
+        formData.append('services[]', serviceId);
+      });
       
       const formattedArea = /^\d+/.test(areas.trim()) ? areas.trim() : "1";
       formData.append('areas[]', String(formattedArea));
+      formData.append('areas', String(formattedArea));
       
       const docExt = govIdDoc.uri.split('.').pop() || 'jpg';
       formData.append('documents[]', {
@@ -155,7 +162,7 @@ export default function TechOnboarding() {
                 const sId = item.id.toString();
                 const isSelected = selectedServices.includes(sId);
                 const title = item.name || item.title;
-                const { icon, bg } = getCategoryIconDetails(item.category_id?.toString() || "0");
+                const { icon, bg } = getCategoryIconDetails(item.category_id?.toString() || sId);
 
                 return (
                   <TouchableOpacity 

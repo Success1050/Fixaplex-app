@@ -316,7 +316,7 @@ export default function Schedule() {
                 style={styles.dropdownItem}
                 onPress={() => handleTimingSelect("ASAP")}
               >
-                <Ionicons name="car-outline" size={24} color="#1A56DB" style={styles.itemIcon} />
+                <Ionicons name="car-outline" size={24} color="#1A6B6B" style={styles.itemIcon} />
                 <View>
                   <Text style={styles.itemTitle}>ASAP</Text>
                   <Text style={styles.itemSubtitle}>I need the technician right now</Text>
@@ -327,7 +327,7 @@ export default function Schedule() {
                 style={styles.dropdownItem}
                 onPress={() => handleTimingSelect("Tomorrow")}
               >
-                <Ionicons name="time-outline" size={24} color="#1A56DB" style={styles.itemIcon} />
+                <Ionicons name="time-outline" size={24} color="#1A6B6B" style={styles.itemIcon} />
                 <View>
                   <Text style={styles.itemTitle}>Tomorrow</Text>
                   <Text style={styles.itemSubtitle}>I need the technician tomorrow</Text>
@@ -341,7 +341,7 @@ export default function Schedule() {
                 <Ionicons
                   name="calendar-outline"
                   size={24}
-                  color="#1A56DB"
+                  color="#1A6B6B"
                   style={styles.itemIcon}
                 />
                 <View>
@@ -638,7 +638,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff",
   },
   nextButton: {
-    backgroundColor: "#1A56DB",
+    backgroundColor: "#1A6B6B",
     paddingVertical: 16,
     borderRadius: 30,
     alignItems: "center",

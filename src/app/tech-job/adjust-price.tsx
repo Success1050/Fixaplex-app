@@ -1,18 +1,46 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, SafeAreaView, Platform, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as SecureStore from "expo-secure-store";
 import axios from "axios";
 import { BASE_URL } from "../../config/api";
 import { Ionicons } from "@expo/vector-icons";
+import { getServicePriceRange } from "../../utils/serviceCatalog";
 
 export default function AdjustPrice() {
   const router = useRouter();
-  const { assignment_id, base_price, price_range } = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
+  const { assignment_id, booking_id, current_status, base_price, price_range, service_name, service_id } = useLocalSearchParams();
   
+  const resolvedRange = 
+    (price_range && String(price_range).includes("-")) 
+      ? String(price_range) 
+      : getServicePriceRange(service_id ? String(service_id) : null, service_name ? String(service_name) : null) || (price_range ? String(price_range) : null);
+
   const [price, setPrice] = useState(base_price ? String(base_price) : "");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const submitQuoteCall = async (token: string) => {
+    const formData = new FormData();
+    formData.append("assignment_id", String(assignment_id));
+    if (booking_id) {
+      formData.append("booking_id", String(booking_id));
+      formData.append("id", String(booking_id));
+    }
+    formData.append("amount_paid", price.trim());
+    formData.append("reason", reason.trim());
+    formData.append("is_revision", "1");
+    formData.append("revised", "1");
+
+    return await axios.post(`${BASE_URL}/technicians/jobs/change_price.php`, formData, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "multipart/form-data",
+      }
+    });
+  };
 
   const handleSubmit = async () => {
     if (!price.trim()) {
@@ -23,17 +51,35 @@ export default function AdjustPrice() {
     try {
       setLoading(true);
       const token = await SecureStore.getItemAsync("userToken");
-      const formData = new FormData();
-      formData.append("assignment_id", assignment_id as string);
-      formData.append("amount_paid", price);
-      formData.append("reason", reason);
+      if (!token) {
+        Alert.alert("Error", "You must be logged in to submit a quote.");
+        return;
+      }
 
-      const res = await axios.post(`${BASE_URL}/technicians/jobs/change_price.php`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
+      let res = await submitQuoteCall(token);
+
+      // If backend requires Arrived status (status 6) before price change (e.g. for revised quotes)
+      if (!res.data?.success && res.data?.msg && res.data.msg.toLowerCase().includes("arrive")) {
+        console.log("[adjust-price] Server requires arrival confirmation. Syncing arrival status...");
+        try {
+          const statusFormData = new FormData();
+          statusFormData.append("assignment_id", String(assignment_id));
+          if (booking_id) statusFormData.append("booking_id", String(booking_id));
+          statusFormData.append("status", "6");
+
+          await axios.post(`${BASE_URL}/technicians/jobs/change_job_status.php`, statusFormData, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "multipart/form-data",
+            }
+          });
+
+          // Retry quote submission
+          res = await submitQuoteCall(token);
+        } catch (statusErr) {
+          console.warn("[adjust-price] Could not sync arrival status:", statusErr);
         }
-      });
+      }
 
       if (res.data?.success) {
         Alert.alert("Success", res.data?.msg || "Quote submitted successfully!");
@@ -45,9 +91,9 @@ export default function AdjustPrice() {
       } else {
         Alert.alert("Error", res.data?.msg || "Failed to submit quote.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      Alert.alert("Error", "A network error occurred.");
+      Alert.alert("Error", err?.response?.data?.msg || "A network error occurred.");
     } finally {
       setLoading(false);
     }
@@ -67,7 +113,7 @@ export default function AdjustPrice() {
 
         <Text style={styles.label}>Original Estimated Quote</Text>
         <Text style={styles.estimatePrice}>
-          {price_range ? String(price_range) : `€ ${base_price || "0.00"}`}
+          {resolvedRange ? String(resolvedRange) : `€ ${base_price || "0.00"}`}
         </Text>
 
         <Text style={styles.label}>Your Final Quote</Text>
@@ -98,7 +144,7 @@ export default function AdjustPrice() {
 
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 24, Platform.OS === 'android' ? 48 : 24) }]}>
         <TouchableOpacity 
           style={[styles.primaryButton, price.trim() ? styles.primaryButtonActive : {}]}
           onPress={handleSubmit}
